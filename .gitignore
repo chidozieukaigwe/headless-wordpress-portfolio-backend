@@ -1,0 +1,191 @@
+# Ignore installed plugins (third-party packages)
+wp-content/plugins/
+
+# If you have custom plugins you want to keep tracked, whitelist them here:
+# !wp-content/plugins/my-custom-plugin/
+
+# Ignore uploads and other generated content
+wp-content/uploads/
+
+# Node, OS, editor
+node_modules/
+.DS_Store
+.vscode/
+# .gitignore for WordPress with Environment Variables
+# Based on industry best practices and managed hosting recommendations [citation:1]
+
+##########################
+# ENVIRONMENT VARIABLES  #
+##########################
+# The most important part - NEVER commit your .env file!
+.env
+.env.local
+.env.*.local
+
+##########################
+# WORDPRESS CORE        #
+##########################
+# WordPress core files - these are replaced during updates
+index.php
+wp-activate.php
+wp-admin/
+wp-blog-header.php
+wp-comments-post.php
+wp-config-sample.php
+wp-cron.php
+wp-includes/
+wp-links-opml.php
+wp-load.php
+wp-login.php
+wp-mail.php
+wp-settings.php
+wp-signup.php
+wp-trackback.php
+xmlrpc.php
+license.txt
+readme.html
+
+##########################
+# CONFIGURATION FILES    #
+##########################
+# Sensitive config files - NEVER commit these
+# wp-config.php
+wp-config-local.php
+local-config.php
+db-config.php
+.htaccess
+web.config
+php.ini
+
+##########################
+# WORDPRESS CONTENT      #
+##########################
+# Uploads, cache, and backups
+wp-content/cache/
+wp-content/uploads/
+wp-content/blogs.dir/
+wp-content/upgrade/
+wp-content/backup/
+wp-content/backup-db/
+wp-content/cache/
+wp-content/w3tc-config/
+wp-content/w3tc-*/
+wp-content/object-cache.php
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+wp-content/managewp/
+wp-content/ai1wm-backups/
+
+# Static assets that should use a CDN
+*.mp4
+*.mov
+*.avi
+*.mp3
+*.wmv
+*.pdf
+*.zip
+*.tar.gz
+*.psd
+*.ai
+
+##########################
+# LOG FILES              #
+##########################
+# Debug and error logs
+*.log
+debug.log
+error_log
+wp-content/debug.log
+logs/
+
+##########################
+# DATABASE               #
+##########################
+# Never commit database dumps
+*.sql
+*.sql.gz
+*.sql.zip
+*.sql.tgz
+*.mysqldump
+*.bak
+database-backups/
+
+##########################
+# OS AND IDE FILES       #
+##########################
+# macOS
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Windows
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Linux
+*~
+.directory
+*.swp
+*.swo
+*.swn
+*.lock
+
+# Editors
+.idea/
+.vscode/
+*.sublime-*
+*.komodo-*
+.project
+.classpath
+.settings/
+.netbeans/
+nbproject/
+
+##########################
+# DEPENDENCIES           #
+##########################
+# Package managers
+node_modules/
+vendor/
+bower_components/
+package-lock.json
+composer.lock   # Unless you want deterministic builds
+
+##########################
+# BUILD ARTIFACTS        #
+##########################
+# Compiled and generated files
+dist/
+build/
+*.css.map
+*.js.map
+/assets/build/
+/assets/dist/
+
+##########################
+# THIRD-PARTY EXCLUSIONS #
+##########################
+# Default themes and plugins you don't modify
+wp-content/themes/twenty*/
+wp-content/plugins/akismet/
+wp-content/plugins/hello.php
+
+##########################
+# WHITELIST YOUR CUSTOM  #
+# THEMES AND PLUGINS     #
+##########################
+# Add your custom themes and plugins below
+# Examples:
+# !/wp-content/themes/your-custom-theme/
+# !/wp-content/plugins/your-custom-plugin/
+
+local-xdebuginfo.php
