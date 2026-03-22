@@ -25,8 +25,9 @@ until docker-compose -f "$COMPOSE_FILE" exec -T db mysql -h 127.0.0.1 -u"$DB_USE
   sleep 1
 done
 
-echo "MySQL is up. Installing Composer dependencies inside PHP container (if needed)..."
-docker-compose -f "$COMPOSE_FILE" run --rm php composer install --no-interaction --prefer-dist || true
+echo "MySQL is up. Installing Composer dependencies inside PHP container (if needed) (skip composer scripts to avoid core installer)..."
+# Avoid running Composer scripts (which run johnpbloch/wordpress core installer that creates ./wordpress)
+docker-compose -f "$COMPOSE_FILE" run --rm php composer install --no-interaction --prefer-dist --no-scripts || true
 
 echo "Running PHPUnit inside PHP container..."
 # Pass DB env vars through to the container run command

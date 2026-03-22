@@ -190,3 +190,4 @@ wp-content/plugins/hello.php
 # !/wp-content/plugins/your-custom-plugin/
 
 local-xdebuginfo.php
+wordpress/
