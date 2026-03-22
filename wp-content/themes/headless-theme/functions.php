@@ -267,3 +267,42 @@ function expand_acf_image_fields_in_rest($response, $post, $request)
 }
 
 add_filter('rest_prepare_project', 'expand_acf_image_fields_in_rest', 10, 3);
+
+/**
+ * Add parsed Gutenberg blocks and optional server-rendered HTML blocks
+ * to REST responses for `project` post type so headless frontends can
+ * consume block data or pre-rendered HTML.
+ */
+function add_blocks_to_rest_response($response, $post, $request)
+{
+    $data = $response->get_data();
+
+    // Parse blocks (raw block structure)
+    if (function_exists('parse_blocks')) {
+        $blocks = parse_blocks($post->post_content);
+        $data['blocks'] = $blocks;
+    } else {
+        $data['blocks'] = array();
+    }
+
+    // Optionally include server-rendered HTML for each block. This is
+    // useful for blocks that rely on server-side rendering (dynamic blocks).
+    if (function_exists('render_block')) {
+        $rendered = array();
+        foreach ($data['blocks'] as $block) {
+            // render_block accepts a block array and returns HTML
+            try {
+                $rendered[] = render_block($block);
+            } catch (Throwable $e) {
+                // Fallback: use innerHTML if render fails
+                $rendered[] = isset($block['innerHTML']) ? $block['innerHTML'] : '';
+            }
+        }
+        $data['rendered_blocks'] = $rendered;
+    }
+
+    $response->set_data($data);
+    return $response;
+}
+
+add_filter('rest_prepare_project', 'add_blocks_to_rest_response', 20, 3);
