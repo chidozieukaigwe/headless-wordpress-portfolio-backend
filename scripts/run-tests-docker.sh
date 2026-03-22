@@ -15,33 +15,26 @@ export WP_TEST_DB_NAME="$DB_NAME"
 export WP_TEST_DB_USER="$DB_USER"
 export WP_TEST_DB_PASSWORD="$DB_PASSWORD"
 
-echo "Starting test DB container..."
-docker-compose -f "$COMPOSE_FILE" up -d
+echo "Starting test DB container and PHP runner..."
+docker-compose -f "$COMPOSE_FILE" up -d --build db php
 
-echo "Waiting for MySQL to become available..."
-# Wait until mysql responds to a simple query
+echo "Waiting for MySQL to become available inside container..."
 RETRIES=60
 until docker-compose -f "$COMPOSE_FILE" exec -T db mysql -h 127.0.0.1 -u"$DB_USER" -p"$DB_PASSWORD" -e 'SELECT 1' >/dev/null 2>&1; do
-  ((RETRIES--)) || { echo "MySQL did not start in time"; docker-compose -f "$COMPOSE_FILE" logs db; exit 1; }
+  ((RETRIES--)) || { echo "MySQL did not start in time"; docker-compose -f "$COMPOSE_FILE" logs db; docker-compose -f "$COMPOSE_FILE" down -v; exit 1; }
   sleep 1
 done
 
-echo "MySQL is up. Running PHPUnit..."
+echo "MySQL is up. Installing Composer dependencies inside PHP container (if needed)..."
+docker-compose -f "$COMPOSE_FILE" run --rm php composer install --no-interaction --prefer-dist || true
 
-# Run phpunit with the environment variables defined above
-WP_TESTS_ENV_VARS=(
-  "WP_TEST_DB_HOST=$WP_TEST_DB_HOST"
-  "WP_TEST_DB_NAME=$WP_TEST_DB_NAME"
-  "WP_TEST_DB_USER=$WP_TEST_DB_USER"
-  "WP_TEST_DB_PASSWORD=$WP_TEST_DB_PASSWORD"
-)
-
-# Run phpunit
-"${WP_TESTS_ENV_VARS[@]}" ./vendor/bin/phpunit "$@"
+echo "Running PHPUnit inside PHP container..."
+# Pass DB env vars through to the container run command
+docker-compose -f "$COMPOSE_FILE" run --rm -e WP_TEST_DB_HOST="$WP_TEST_DB_HOST" -e WP_TEST_DB_NAME="$WP_TEST_DB_NAME" -e WP_TEST_DB_USER="$WP_TEST_DB_USER" -e WP_TEST_DB_PASSWORD="$WP_TEST_DB_PASSWORD" php vendor/bin/phpunit "$@"
 
 RESULT=$?
 
-echo "Tearing down test DB container..."
+echo "Tearing down test DB and PHP containers..."
 docker-compose -f "$COMPOSE_FILE" down -v
 
 exit $RESULT
