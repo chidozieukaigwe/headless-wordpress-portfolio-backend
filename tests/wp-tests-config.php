@@ -37,13 +37,31 @@ if (! defined('ABSPATH')) {
 }
 
 // Path to PHP binary used during tests. Prefer the runtime PHP binary when
-// available (PHP exposes `PHP_BINARY`), otherwise fall back to `/usr/bin/php`.
+// available (PHP exposes `PHP_BINARY`), otherwise try common locations or
+// fall back to `/usr/bin/env php` which resolves `php` from PATH.
 if (! defined('WP_PHP_BINARY')) {
+    $candidate = null;
+
     if (defined('PHP_BINARY') && PHP_BINARY) {
-        define('WP_PHP_BINARY', PHP_BINARY);
-    } else {
-        define('WP_PHP_BINARY', '/usr/bin/php');
+        // If PHP_BINARY contains spaces (e.g. paths inside "Application Support"),
+        // avoid using it directly because the WP test bootstrap calls it without
+        // proper quoting. Prefer /usr/bin/php or /usr/bin/env php instead.
+        if (strpos(PHP_BINARY, ' ') === false && is_executable(PHP_BINARY)) {
+            $candidate = PHP_BINARY;
+        }
     }
+
+    // Prefer system php if available
+    if (! $candidate && is_executable('/usr/bin/php')) {
+        $candidate = '/usr/bin/php';
+    }
+
+    // Final fallback: use env to find php on PATH
+    if (! $candidate) {
+        $candidate = '/usr/bin/env php';
+    }
+
+    define('WP_PHP_BINARY', $candidate);
 }
 
 // Optional: table prefix for test DB
