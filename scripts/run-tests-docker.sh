@@ -27,7 +27,12 @@ done
 
 echo "MySQL is up. Installing Composer dependencies inside PHP container (if needed) (skip composer scripts to avoid core installer)..."
 # Avoid running Composer scripts (which run johnpbloch/wordpress core installer that creates ./wordpress)
-docker-compose -f "$COMPOSE_FILE" run --rm php composer install --no-interaction --prefer-dist --no-scripts || true
+if [ -d "vendor" ]; then
+  echo "vendor/ exists on host — skipping composer install inside container"
+else
+  echo "vendor/ not found — installing dependencies inside PHP container (this may install WordPress core)"
+  docker-compose -f "$COMPOSE_FILE" run --rm php composer install --no-interaction --prefer-dist || true
+fi
 
 echo "Running PHPUnit inside PHP container..."
 # Pass DB env vars through to the container run command
