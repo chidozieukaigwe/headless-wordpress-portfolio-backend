@@ -36,15 +36,21 @@ if (! defined('ABSPATH')) {
     define('ABSPATH', dirname(__DIR__) . '/');
 }
 
-// Path to PHP binary used during tests
+// Path to PHP binary used during tests. Prefer the runtime PHP binary when
+// available (PHP exposes `PHP_BINARY`), otherwise fall back to `/usr/bin/php`.
 if (! defined('WP_PHP_BINARY')) {
-    define('WP_PHP_BINARY', '/usr/bin/php');
+    if (defined('PHP_BINARY') && PHP_BINARY) {
+        define('WP_PHP_BINARY', PHP_BINARY);
+    } else {
+        define('WP_PHP_BINARY', '/usr/bin/php');
+    }
 }
 
 // Optional: table prefix for test DB
-if (! defined('WP_TESTS_TABLE_PREFIX')) {
-    define('WP_TESTS_TABLE_PREFIX', 'wptests_');
-}
+// NOTE: the WP test bootstrap defines `WP_TESTS_TABLE_PREFIX` itself from a
+// local `$table_prefix` variable. To avoid "already defined" warnings, do
+// not define the `WP_TESTS_TABLE_PREFIX` constant here. If you need to
+// override it, set the environment variable `WP_PHPUNIT__TABLE_PREFIX`.
 
 // Prevent automated translation updates from breaking tests
 if (! defined('WP_TESTS_PHPUNIT_POLYFILLS_PATH') && file_exists(__DIR__ . '/../vendor/yoast/phpunit-polyfills/phpunitpolyfills-autoload.php')) {
