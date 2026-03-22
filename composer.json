@@ -18,5 +18,16 @@
     "installer-paths": {
       "wp-content/plugins/{$name}/": ["type:wordpress-plugin"]
     }
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.0",
+    "wp-phpunit/wp-phpunit": "^6.9",
+    "yoast/phpunit-polyfills": "^4.0"
+  },
+  "config": {
+    "allow-plugins": {
+      "johnpbloch/wordpress-core-installer": true,
+      "composer/installers": true
+    }
   }
 }
