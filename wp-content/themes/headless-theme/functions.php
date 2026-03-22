@@ -221,3 +221,49 @@ function modify_preview_link($preview_link, $post)
     return $preview_url;
 }
 add_filter('preview_post_link', 'modify_preview_link', 10, 2);
+
+/**
+ * Expand ACF image fields in REST responses for `project` post type.
+ * Adds a `{field_name}_url` entry for any ACF image fields that return an ID.
+ */
+function expand_acf_image_fields_in_rest($response, $post, $request)
+{
+    if (! function_exists('get_fields')) {
+        return $response;
+    }
+
+    $data = $response->get_data();
+    $acf = get_fields($post->ID);
+    if (! $acf || ! is_array($acf)) {
+        return $response;
+    }
+
+    foreach ($acf as $key => $value) {
+        $field_obj = get_field_object($key, $post->ID);
+        if (! $field_obj || empty($field_obj['type'])) {
+            continue;
+        }
+
+        if ($field_obj['type'] === 'image') {
+            // If ACF is returning an ID, convert to URL and expose as separate key.
+            if (is_numeric($value)) {
+                $url = wp_get_attachment_image_url((int) $value, 'full');
+                if ($url) {
+                    $acf[$key . '_url'] = $url;
+                }
+            } elseif (is_array($value) && isset($value['ID'])) {
+                $url = wp_get_attachment_image_url((int) $value['ID'], 'full');
+                if ($url) {
+                    $acf[$key . '_url'] = $url;
+                }
+            }
+        }
+    }
+
+    $data['acf'] = $acf;
+    $response->set_data($data);
+
+    return $response;
+}
+
+add_filter('rest_prepare_project', 'expand_acf_image_fields_in_rest', 10, 3);
