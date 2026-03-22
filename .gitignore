@@ -11,6 +11,7 @@ wp-content/uploads/
 node_modules/
 .DS_Store
 .vscode/
+.docker/
 # .gitignore for WordPress with Environment Variables
 # Based on industry best practices and managed hosting recommendations [citation:1]
 

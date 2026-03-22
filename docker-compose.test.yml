@@ -1,0 +1,24 @@
+version: '3.7'
+
+services:
+  db:
+    image: mysql:5.7
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: local
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+    ports:
+      - "3307:3306" # map to 3307 to avoid clashing with local MySQL
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - db_data_test:/var/lib/mysql
+
+volumes:
+  db_data_test:
+*** End Patch

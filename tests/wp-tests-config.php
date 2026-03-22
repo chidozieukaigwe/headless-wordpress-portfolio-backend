@@ -6,18 +6,24 @@
  * Adjust values if your local test DB or host differ.
  */
 
-// Database settings for the tests database (create this DB manually).
+// Database settings for the tests database. Prefer explicitly provided
+// environment variables so CI or docker helper scripts can configure them.
+// Supported env vars: WP_TEST_DB_NAME, WP_TEST_DB_USER, WP_TEST_DB_PASSWORD, WP_TEST_DB_HOST
 if (! defined('DB_NAME')) {
-    define('DB_NAME', 'local');
+    $env_db_name = getenv('WP_TEST_DB_NAME');
+    define('DB_NAME', $env_db_name ? $env_db_name : 'local');
 }
 if (! defined('DB_USER')) {
-    define('DB_USER', 'root');
+    $env_db_user = getenv('WP_TEST_DB_USER');
+    define('DB_USER', $env_db_user ? $env_db_user : 'root');
 }
 if (! defined('DB_PASSWORD')) {
-    define('DB_PASSWORD', 'root');
+    $env_db_pass = getenv('WP_TEST_DB_PASSWORD');
+    define('DB_PASSWORD', $env_db_pass ? $env_db_pass : 'root');
 }
 if (! defined('DB_HOST')) {
-    define('DB_HOST', 'localhost');
+    $env_db_host = getenv('WP_TEST_DB_HOST');
+    define('DB_HOST', $env_db_host ? $env_db_host : '127.0.0.1');
 }
 
 // Test site constants
