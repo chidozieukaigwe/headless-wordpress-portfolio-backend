@@ -21,7 +21,7 @@ function chidodesigns_custom_cors_headers()
         header("Access-Control-Allow-Origin: {$http_origin}");
         header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
         header('Access-Control-Allow-Credentials: true');
-        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, X-Preview-Nonce');
         header('Vary: Origin');
     }
 }
@@ -35,7 +35,7 @@ function chidodesigns_handle_preflight_options()
             header("Access-Control-Allow-Origin: {$http_origin}");
             header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
             header('Access-Control-Allow-Credentials: true');
-            header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce');
+            header('Access-Control-Allow-Headers: Authorization, Content-Type, X-WP-Nonce, X-Preview-Nonce');
             header('Access-Control-Max-Age: 86400'); // Cache preflight for 24 hours
             header('Vary: Origin');
         }
