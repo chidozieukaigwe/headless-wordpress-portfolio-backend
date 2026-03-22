@@ -7,8 +7,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: local
-      MYSQL_USER: root
-      MYSQL_PASSWORD: root
     ports:
       - "3307:3306" # map to 3307 to avoid clashing with local MySQL
     healthcheck:
@@ -30,12 +28,7 @@ services:
       - ./:/var/www/html:cached
     working_dir: /var/www/html
     tty: true
-    environment:
-      # Pass through env for tests
-      WP_TEST_DB_HOST: 127.0.0.1:3306
-      WP_TEST_DB_NAME: local
-      WP_TEST_DB_USER: root
-      WP_TEST_DB_PASSWORD: root
+    # Environment variables are provided at runtime from the test runner
 
 volumes:
   db_data_test:

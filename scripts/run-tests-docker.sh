@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 COMPOSE_FILE=docker-compose.test.yml
-DB_HOST=127.0.0.1:3307
+DB_HOST=db:3306
 DB_NAME=local
 DB_USER=root
 DB_PASSWORD=root
