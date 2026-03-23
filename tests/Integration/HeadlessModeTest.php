@@ -4,7 +4,7 @@
  * Integration tests for headless mode functionality
  */
 
-class HeadlessModeTest extends WP_Integration_TestCase
+class HeadlessModeTest extends WP_UnitTestCase
 {
 
     /**
