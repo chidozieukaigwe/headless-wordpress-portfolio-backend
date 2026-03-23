@@ -33,7 +33,6 @@ class CorsHeadersTest extends WP_UnitTestCase
             $returned = chidodesigns_add_cors_headers($served, $result, $request);
 
             $headers = headers_list();
-            $this->assertNotEmpty($headers);
 
             $found = false;
             foreach ($headers as $h) {
@@ -42,6 +41,18 @@ class CorsHeadersTest extends WP_UnitTestCase
                     $this->assertStringContainsString('http://allowed.example', $h);
                 }
             }
+
+            // If headers were already sent in this environment, the mu-plugin will
+            // record the headers on a global for tests to inspect.
+            if (! $found && isset($GLOBALS['chidodesigns_cors_test_headers'])) {
+                foreach ($GLOBALS['chidodesigns_cors_test_headers'] as $h) {
+                    if (stripos($h, 'Access-Control-Allow-Origin:') === 0) {
+                        $found = true;
+                        $this->assertStringContainsString('http://allowed.example', $h);
+                    }
+                }
+            }
+
             $this->assertTrue($found, 'Access-Control-Allow-Origin header not found');
         } else {
             $this->markTestSkipped('CORS handler function not available');
