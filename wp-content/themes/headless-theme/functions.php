@@ -229,7 +229,7 @@ add_filter('preview_post_link', 'modify_preview_link', 10, 2);
  */
 function expand_acf_image_fields_in_rest($response, $post, $request)
 {
-    if (! function_exists('get_fields')) {
+    if (! function_exists('get_fields') || ! function_exists('get_field_object')) {
         return $response;
     }
 
