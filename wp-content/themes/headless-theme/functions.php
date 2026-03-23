@@ -254,11 +254,17 @@ function expand_acf_image_fields_in_rest($response, $post, $request)
                 // If ACF is returning an ID, convert to URL and expose as separate key.
                 if (is_numeric($value)) {
                     $url = wp_get_attachment_image_url((int) $value, 'full');
+                    if (! $url) {
+                        $url = wp_get_attachment_url((int) $value);
+                    }
                     if ($url) {
                         $acf[$key . '_url'] = $url;
                     }
                 } elseif (is_array($value) && isset($value['ID'])) {
                     $url = wp_get_attachment_image_url((int) $value['ID'], 'full');
+                    if (! $url) {
+                        $url = wp_get_attachment_url((int) $value['ID']);
+                    }
                     if ($url) {
                         $acf[$key . '_url'] = $url;
                     }
