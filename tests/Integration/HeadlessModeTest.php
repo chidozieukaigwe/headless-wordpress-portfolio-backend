@@ -79,6 +79,9 @@ class HeadlessModeTest extends WP_UnitTestCase
         $original_link = 'http://example.test/?p=' . $post_id;
         // Call the modifier directly when available to avoid is_admin() semantics
         if (function_exists('modify_preview_link')) {
+            if (! defined('WP_ADMIN')) {
+                define('WP_ADMIN', true);
+            }
             $modified = modify_preview_link($original_link, $post);
         } else {
             $modified = apply_filters('preview_post_link', $original_link, $post);
