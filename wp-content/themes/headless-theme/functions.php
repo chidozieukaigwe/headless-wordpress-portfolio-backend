@@ -229,7 +229,7 @@ add_filter('preview_post_link', 'modify_preview_link', 10, 2);
  */
 function expand_acf_image_fields_in_rest($response, $post, $request)
 {
-    if (! function_exists('get_fields') || ! function_exists('get_field_object')) {
+    if (! function_exists('get_fields')) {
         return $response;
     }
 
@@ -240,22 +240,28 @@ function expand_acf_image_fields_in_rest($response, $post, $request)
     }
 
     foreach ($acf as $key => $value) {
-        $field_obj = get_field_object($key, $post->ID);
-        if (! $field_obj || empty($field_obj['type'])) {
-            continue;
-        }
+        // If ACF's `get_field_object` helper is available, use it to
+        // detect image fields and expand IDs to URLs. If it's not
+        // available in the test environment, skip expansion but keep
+        // the raw ACF values so tests still receive an `acf` key.
+        if (function_exists('get_field_object')) {
+            $field_obj = get_field_object($key, $post->ID);
+            if (! $field_obj || empty($field_obj['type'])) {
+                continue;
+            }
 
-        if ($field_obj['type'] === 'image') {
-            // If ACF is returning an ID, convert to URL and expose as separate key.
-            if (is_numeric($value)) {
-                $url = wp_get_attachment_image_url((int) $value, 'full');
-                if ($url) {
-                    $acf[$key . '_url'] = $url;
-                }
-            } elseif (is_array($value) && isset($value['ID'])) {
-                $url = wp_get_attachment_image_url((int) $value['ID'], 'full');
-                if ($url) {
-                    $acf[$key . '_url'] = $url;
+            if ($field_obj['type'] === 'image') {
+                // If ACF is returning an ID, convert to URL and expose as separate key.
+                if (is_numeric($value)) {
+                    $url = wp_get_attachment_image_url((int) $value, 'full');
+                    if ($url) {
+                        $acf[$key . '_url'] = $url;
+                    }
+                } elseif (is_array($value) && isset($value['ID'])) {
+                    $url = wp_get_attachment_image_url((int) $value['ID'], 'full');
+                    if ($url) {
+                        $acf[$key . '_url'] = $url;
+                    }
                 }
             }
         }
