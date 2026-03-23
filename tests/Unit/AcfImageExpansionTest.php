@@ -49,7 +49,7 @@ class AcfImageExpansionTest extends WP_UnitTestCase
         $this->assertArrayHasKey('gallery_image', $data['acf']);
         $this->assertArrayHasKey('gallery_image_url', $data['acf']);
 
-        $expected_url = wp_get_attachment_image_url($attachment_id, 'full');
+        $expected_url = wp_get_attachment_image_url($attachment_id, 'full') ?: wp_get_attachment_url($attachment_id);
         $this->assertEquals($expected_url, $data['acf']['gallery_image_url']);
     }
 }
