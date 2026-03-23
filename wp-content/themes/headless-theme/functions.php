@@ -57,7 +57,8 @@ add_action('init', 'disable_frontend_assets');
  */
 function register_preview_endpoint()
 {
-    register_rest_route('wp/v2/custom/v1', '/preview/(?P<post_type>[a-zA-Z0-9_-]+)/(?P<id>\d+)', array(
+    // Use `custom/v1` namespace so endpoints are available at /wp-json/custom/v1/...
+    register_rest_route('custom/v1', '/preview/(?P<post_type>[a-zA-Z0-9_-]+)/(?P<id>\d+)', array(
         'methods' => 'GET',
         'callback' => 'get_preview_content',
         'permission_callback' => 'verify_preview_permission',
