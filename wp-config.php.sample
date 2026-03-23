@@ -1,0 +1,84 @@
+<?php
+
+/**
+ * Sample wp-config.php used as a fallback when git is not available.
+ * This file intentionally mirrors the repository's `wp-config.php` and
+ * reads configuration from a `.env` file (see `.env.example`).
+ */
+
+// Load environment variables from .env file
+if (file_exists(__DIR__ . '/.env')) {
+    $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) {
+            continue;
+        }
+        list($name, $value) = explode('=', $line, 2);
+        $name = trim($name);
+        $value = trim($value, " '");
+        putenv(sprintf('%s=%s', $name, $value));
+        $_ENV[$name] = $value;
+        $_SERVER[$name] = $value;
+    }
+}
+
+define('DB_NAME', getenv('DB_NAME'));
+define('DB_USER', getenv('DB_USER'));
+define('DB_PASSWORD', getenv('DB_PASSWORD'));
+define('DB_HOST', getenv('DB_HOST'));
+define('DB_CHARSET', getenv('DB_CHARSET'));
+define('DB_COLLATE', getenv('DB_COLLATE'));
+
+define('AUTH_KEY',         getenv('AUTH_KEY'));
+define('SECURE_AUTH_KEY',  getenv('SECURE_AUTH_KEY'));
+define('LOGGED_IN_KEY',    getenv('LOGGED_IN_KEY'));
+define('NONCE_KEY',        getenv('NONCE_KEY'));
+define('AUTH_SALT',        getenv('AUTH_SALT'));
+define('SECURE_AUTH_SALT', getenv('SECURE_AUTH_SALT'));
+define('LOGGED_IN_SALT',   getenv('LOGGED_IN_SALT'));
+define('NONCE_SALT',       getenv('NONCE_SALT'));
+
+$table_prefix = getenv('DB_PREFIX') ?: 'wp_';
+
+define('JWT_AUTH_SECRET_KEY', getenv('JWT_AUTH_SECRET_KEY'));
+define('JWT_AUTH_CORS_ENABLE', getenv('JWT_AUTH_CORS_ENABLE') === 'true' ? true : false);
+define('FORCE_SSL_ADMIN', getenv('FORCE_SSL_ADMIN') === 'true' ? true : false);
+
+define('REST_API_PREFIX', getenv('REST_API_PREFIX') ?: 'wp-json');
+define('REST_API_ENABLED', true);
+
+$frontend_urls = getenv('FRONTEND_URLS') ?: 'http://localhost:3000,http://localhost:5173';
+define('ALLOWED_ORIGINS', array_map('trim', explode(',', $frontend_urls)));
+
+define('DISALLOW_FILE_EDIT', true);
+
+define('WP_HOME', getenv('WP_HOME') ?: 'http://localhost');
+define('WP_SITEURL', getenv('WP_SITEURL') ?: 'http://localhost');
+
+define('WP_CONTENT_DIR', dirname(__FILE__) . '/wp-content');
+define('WP_CONTENT_URL', WP_HOME . '/wp-content');
+
+define('WP_MEMORY_LIMIT', getenv('WP_MEMORY_LIMIT') ?: '256M');
+define('WP_MAX_MEMORY_LIMIT', getenv('WP_MAX_MEMORY_LIMIT') ?: '512M');
+
+define('COMPRESS_CSS', true);
+define('COMPRESS_SCRIPTS', true);
+define('CONCATENATE_SCRIPTS', false);
+define('ENFORCE_GZIP', true);
+
+define('WP_ENVIRONMENT_TYPE', 'local');
+
+if (getenv('WP_ENV') === 'development' || getenv('WP_ENV') === 'local') {
+    define('WP_DEBUG', true);
+    define('WP_DEBUG_LOG', true);
+    define('WP_DEBUG_DISPLAY', true);
+    define('SCRIPT_DEBUG', true);
+} else {
+    define('WP_DEBUG', false);
+}
+
+if (! defined('ABSPATH')) {
+    define('ABSPATH', __DIR__ . '/');
+}
+
+require_once ABSPATH . 'wp-settings.php';

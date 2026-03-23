@@ -19,6 +19,11 @@
       "wp-content/plugins/{$name}/": ["type:wordpress-plugin"]
     }
   },
+  "scripts": {
+    "post-install-cmd": [
+      "php scripts/ensure-wp-config.php"
+    ]
+  },
   "require-dev": {
     "phpunit/phpunit": "^9.0",
     "wp-phpunit/wp-phpunit": "^6.9",
