@@ -195,7 +195,7 @@ function get_preview_content($request)
  */
 function modify_preview_link($preview_link, $post)
 {
-    $react_app_url = getenv('FRONTEND_APP_URL') ?: 'http://localhost:5173';
+    $react_app_url = getenv('FRONTEND_APP_URL') ?: 'http://localhost:3000';
     $react_app_url = esc_url_raw($react_app_url);
 
     // Only modify the preview link when in the admin (where preview links are generated)
