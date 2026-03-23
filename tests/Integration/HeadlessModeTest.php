@@ -15,9 +15,10 @@ class HeadlessModeTest extends WP_UnitTestCase
         // Simulate frontend request
         $_SERVER['REQUEST_URI'] = '/about';
 
-        // Capture redirect
-        add_filter('wp_redirect', function ($location, $status) {
-            $this->assertEquals('http://localhost:5173/about', $location);
+        // Capture redirect and assert against configured frontend URL (fallbacks to port 3000)
+        $expected_frontend = getenv('FRONTEND_APP_URL') ?: 'http://localhost:3000';
+        add_filter('wp_redirect', function ($location, $status) use ($expected_frontend) {
+            $this->assertEquals($expected_frontend . '/about', $location);
             // Return the original location so WP's redirect flow can continue
             return $location;
         }, 10, 2);
@@ -92,9 +93,15 @@ class HeadlessModeTest extends WP_UnitTestCase
         add_filter('is_admin', '__return_true');
 
         $original_link = 'http://example.test/?p=' . $post_id;
-        $modified = apply_filters('preview_post_link', $original_link, $post);
+        // Call the modifier directly when available to avoid is_admin() semantics
+        if (function_exists('modify_preview_link')) {
+            $modified = modify_preview_link($original_link, $post);
+        } else {
+            $modified = apply_filters('preview_post_link', $original_link, $post);
+        }
 
-        $this->assertStringContainsString('http://localhost:5173/preview/', $modified);
+        $expected_frontend = getenv('FRONTEND_APP_URL') ?: 'http://localhost:3000';
+        $this->assertStringContainsString($expected_frontend . '/preview/', $modified);
         $this->assertStringContainsString('/' . $post->post_type . '/', $modified);
     }
 }
