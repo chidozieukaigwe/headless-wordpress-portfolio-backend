@@ -97,3 +97,4 @@ class HeadlessModeTest extends WP_Integration_TestCase
         $this->assertStringContainsString('http://localhost:5173/preview/', $modified);
         $this->assertStringContainsString('/' . $post->post_type . '/', $modified);
     }
+}
