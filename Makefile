@@ -26,3 +26,9 @@ phpunit:
 	else \
 		echo "vendor/bin/phpunit not found. Run 'composer install' or use 'make test' to run via Docker."; exit 1; \
 	fi
+
+.PHONY: e2e-cache-check
+e2e-cache-check:
+	@echo "Running E2E cache check (starts redis and runs scripts/e2e-cache-check.sh)"
+	@docker compose -f docker-compose.redis.yml up -d
+	@./scripts/e2e-cache-check.sh
