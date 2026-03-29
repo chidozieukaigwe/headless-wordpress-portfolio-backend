@@ -10,6 +10,14 @@ set -euo pipefail
 WP_URL=${WP_URL:-http://localhost}
 REDIS_COMPOSE_FILE="docker-compose.redis.yml"
 
+# Load .env if present so local HEADLESS_WEBHOOK_SECRET is available to the script
+if [ -f .env ]; then
+  set -o allexport
+  # shellcheck disable=SC1091
+  source .env
+  set +o allexport
+fi
+
 echo "Starting Redis via ${REDIS_COMPOSE_FILE}..."
 docker compose -f "${REDIS_COMPOSE_FILE}" up -d
 
@@ -31,7 +39,12 @@ echo "Hitting REST endpoint to populate cache..."
 curl -s -w "\nTook: %{time_total}s\n" "${WP_URL}/wp-json/wp/v2/posts?per_page=1" -o /tmp/e2e_response.json
 
 echo "Calling health endpoint..."
-curl -s "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+# Send secret header when available; permission callback allows localhost or secret
+if [ -n "${HEADLESS_WEBHOOK_SECRET-}" ]; then
+  curl -s -H "X-Webhook-Secret: ${HEADLESS_WEBHOOK_SECRET}" "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+else
+  curl -s "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+fi
 
 echo "Listing Redis keys (headless prefix)..."
 docker compose -f "${REDIS_COMPOSE_FILE}" exec -T redis redis-cli --raw KEYS "headless*" || true
