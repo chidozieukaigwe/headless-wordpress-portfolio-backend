@@ -6,7 +6,8 @@
     "johnpbloch/wordpress": "^6.0",
     "wpackagist-plugin/advanced-custom-fields": "*",
     "wpackagist-plugin/custom-post-type-ui": "*",
-    "wpackagist-plugin/jwt-authentication-for-wp-rest-api": "*"
+    "wpackagist-plugin/jwt-authentication-for-wp-rest-api": "*",
+    "tillkruss/redis-cache": "^1.6"
   },
   "repositories": [
     {
@@ -21,7 +22,8 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "php scripts/ensure-wp-config.php"
+      "php scripts/ensure-wp-config.php",
+      "php scripts/install-object-cache.php"
     ]
   },
   "require-dev": {
