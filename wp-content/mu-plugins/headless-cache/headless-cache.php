@@ -224,7 +224,35 @@ add_action('rest_api_init', function () {
                 'info' => $info,
             ]);
         },
-        'permission_callback' => '__return_true',
+        'permission_callback' => function ($request) {
+            // Allow unprotected access in local/dev environments
+            if (defined('WP_ENV') && in_array(WP_ENV, ['local', 'development'], true)) {
+                return true;
+            }
+
+            // Validate shared secret header
+            $secret = defined('HEADLESS_WEBHOOK_SECRET') ? HEADLESS_WEBHOOK_SECRET : getenv('HEADLESS_WEBHOOK_SECRET');
+            $header = '';
+            if (is_object($request) && method_exists($request, 'get_header')) {
+                $header = $request->get_header('x-webhook-secret') ?: $request->get_header('x-health-secret') ?: '';
+            }
+            if ($secret && is_string($header) && hash_equals((string) $secret, (string) $header)) {
+                return true;
+            }
+
+            // Allow loopback requests
+            $remote = $_SERVER['REMOTE_ADDR'] ?? '';
+            if (in_array($remote, ['127.0.0.1', '::1'], true)) {
+                return true;
+            }
+
+            // Fallback: require an authenticated admin user
+            if (function_exists('current_user_can') && current_user_can('manage_options')) {
+                return true;
+            }
+
+            return false;
+        },
     ]);
 });
 
