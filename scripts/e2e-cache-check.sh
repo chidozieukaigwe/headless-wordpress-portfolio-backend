@@ -46,14 +46,29 @@ for i in {1..10}; do
 done
 
 echo "Hitting REST endpoint to populate cache..."
-curl -s -w "\nTook: %{time_total}s\n" "${WP_URL}/wp-json/wp/v2/posts?per_page=1" -o /tmp/e2e_response.json
+# If WP_URL is a Local hostname (e.g. chidodesigns.local) use --resolve so curl targets 127.0.0.1
+HOST=$(echo "${WP_URL}" | sed -E 's#https?://##' | cut -d'/' -f1)
+RESOLVE_OP=""
+if [ "${HOST}" != "127.0.0.1" ] && [ "${HOST}" != "localhost" ] && [ "${HOST}" != "0.0.0.0" ]; then
+  RESOLVE_OP="--resolve ${HOST}:80:127.0.0.1"
+fi
+
+curl -s ${RESOLVE_OP} -w "\nTook: %{time_total}s\n" "${WP_URL}/wp-json/wp/v2/posts?per_page=1" -o /tmp/e2e_response.json
 
 echo "Calling health endpoint..."
 # Send secret header when available; permission callback allows localhost or secret
 if [ -n "${HEADLESS_WEBHOOK_SECRET-}" ]; then
-  curl -s -H "X-Webhook-Secret: ${HEADLESS_WEBHOOK_SECRET}" "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+  if command -v jq >/dev/null 2>&1; then
+    curl -s ${RESOLVE_OP} -H "X-Webhook-Secret: ${HEADLESS_WEBHOOK_SECRET}" "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+  else
+    curl -s ${RESOLVE_OP} -H "X-Webhook-Secret: ${HEADLESS_WEBHOOK_SECRET}" "${WP_URL}/wp-json/headless-cache/v1/health" || true
+  fi
 else
-  curl -s "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+  if command -v jq >/dev/null 2>&1; then
+    curl -s ${RESOLVE_OP} "${WP_URL}/wp-json/headless-cache/v1/health" | jq || true
+  else
+    curl -s ${RESOLVE_OP} "${WP_URL}/wp-json/headless-cache/v1/health" || true
+  fi
 fi
 
 echo "Listing Redis keys (headless prefix)..."

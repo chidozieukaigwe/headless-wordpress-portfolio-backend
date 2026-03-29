@@ -7,7 +7,7 @@
     "wpackagist-plugin/advanced-custom-fields": "*",
     "wpackagist-plugin/custom-post-type-ui": "*",
     "wpackagist-plugin/jwt-authentication-for-wp-rest-api": "*",
-    "tillkruss/redis-cache": "^1.6"
+    "rhubarbgroup/redis-cache": "^2.7"
   },
   "repositories": [
     {
@@ -34,7 +34,8 @@
   "config": {
     "allow-plugins": {
       "johnpbloch/wordpress-core-installer": true,
-      "composer/installers": true
+      "composer/installers": true,
+      "mnsami/composer-custom-directory-installer": true
     }
   }
 }

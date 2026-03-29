@@ -3,6 +3,10 @@
 // This is safe to run multiple times and fails silently if the vendor file is missing.
 
 $vendorPaths = [
+    // Preferred/modern package
+    __DIR__ . '/../vendor/rhubarbgroup/redis-cache/object-cache.php',
+    __DIR__ . '/../vendor/rhubarbgroup/redis-cache/src/object-cache.php',
+    // Back-compat: older tillkruss package (may be absent)
     __DIR__ . '/../vendor/tillkruss/redis-cache/object-cache.php',
     __DIR__ . '/../vendor/tillkruss/redis-cache/src/object-cache.php',
 ];
@@ -19,7 +23,7 @@ foreach ($vendorPaths as $p) {
 
 if (! $found) {
     // Nothing to do (developer can install plugin manually or via composer)
-    fwrite(STDOUT, "install-object-cache: no tillkruss drop-in found in vendor, skipping\n");
+    fwrite(STDOUT, "install-object-cache: no object-cache drop-in found in vendor, skipping\n");
     exit(0);
 }
 

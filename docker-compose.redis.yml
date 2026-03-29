@@ -1,14 +1,15 @@
-version: '3.8'
+version: "3.8"
+
 services:
   redis:
     image: redis:7-alpine
-    container_name: public-redis
+    container_name: chidodesigns_redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis-data:/data
 
 volumes:
-  redis_data:
-    name: public_redis_data
+  redis-data:
+    name: chidodesigns_redis_data

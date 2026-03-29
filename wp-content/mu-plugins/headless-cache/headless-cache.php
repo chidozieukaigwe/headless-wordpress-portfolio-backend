@@ -32,6 +32,7 @@ class HeadlessCacheManager
         } catch (Exception $e) {
             // Fail open: leave $this->redis null and continue serving dynamic responses
             $this->redis = null;
+            error_log('headless-cache: redis init failed: ' . $e->getMessage());
         }
     }
 
@@ -76,17 +77,37 @@ class HeadlessCacheManager
      */
     public function get_cached_response($request)
     {
+        $key = $this->get_cache_key($request);
+
+        // Prefer WP object-cache (drop-in) when available
+        if (function_exists('wp_cache_get')) {
+            try {
+                $found = null;
+                $value = wp_cache_get($key, 'headless-cache', false, $found);
+                if ($found) {
+                    error_log('headless-cache: cache hit (wp_cache) ' . $key);
+                    return $value;
+                }
+                error_log('headless-cache: cache miss (wp_cache) ' . $key);
+            } catch (Exception $e) {
+                error_log('headless-cache: wp_cache_get error: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback to direct Redis client if configured
         if (! $this->redis) {
             return null;
         }
 
         try {
-            $key = $this->get_cache_key($request);
             $cached = $this->redis->get($key);
             if ($cached) {
+                error_log('headless-cache: cache hit (redis) ' . $key);
                 return json_decode($cached, true);
             }
+            error_log('headless-cache: cache miss (redis) ' . $key);
         } catch (Exception $e) {
+            error_log('headless-cache: get error: ' . $e->getMessage());
             // ignore and fail open
         }
 
@@ -98,10 +119,6 @@ class HeadlessCacheManager
      */
     public function cache_api_response($request, $response)
     {
-        if (! $this->redis) {
-            return $response;
-        }
-
         try {
             if (strtoupper($request->get_method()) !== 'GET') {
                 return $response;
@@ -109,14 +126,42 @@ class HeadlessCacheManager
 
             $payload = rest_ensure_response($response);
             $data = $payload->get_data();
-            $json = wp_json_encode($data);
 
             $key = $this->get_cache_key($request);
             $ttl = $this->calculate_ttl($request);
+
+            // Prefer WP object-cache
+            if (function_exists('wp_cache_set')) {
+                $ok = wp_cache_set($key, $data, 'headless-cache', $ttl);
+                if ($ok) {
+                    $size = strlen(wp_json_encode($data));
+                    error_log(sprintf('headless-cache: cached (wp_cache) %s ttl=%d size=%d', $key, $ttl, $size));
+                } else {
+                    error_log('headless-cache: wp_cache_set failed for ' . $key);
+                }
+
+                return $response;
+            }
+
+            // Fallback to direct Redis client
+            if (! $this->redis) {
+                return $response;
+            }
+
+            $json = wp_json_encode($data);
             if ($json !== false) {
-                $this->redis->setex($key, $ttl, $json);
+                $size = strlen($json);
+                $ok = $this->redis->setex($key, $ttl, $json);
+                if ($ok) {
+                    error_log(sprintf('headless-cache: cached (redis) %s ttl=%d size=%d', $key, $ttl, $size));
+                } else {
+                    error_log('headless-cache: failed to set (redis) ' . $key);
+                }
+            } else {
+                error_log('headless-cache: json encode failed for ' . $key);
             }
         } catch (Exception $e) {
+            error_log('headless-cache: set error: ' . $e->getMessage());
             // ignore failures — don't block response
         }
 
@@ -128,20 +173,38 @@ class HeadlessCacheManager
      */
     public function invalidate_content_cache($post_id)
     {
-        if (! $this->redis) {
-            return;
-        }
-
         try {
-            // delete specific post key
             $post_key = $this->prefix . 'post:' . $post_id;
-            $this->redis->del($post_key);
 
-            // naive: clear keys by pattern for listings and homepage
-            if (method_exists($this->redis, 'keys')) {
-                $pattern = $this->prefix . '*';
-                foreach ($this->redis->keys($pattern) as $k) {
-                    $this->redis->del($k);
+            // Prefer WP object-cache deletion
+            if (function_exists('wp_cache_delete')) {
+                wp_cache_delete($post_key, 'headless-cache');
+
+                // Try to access underlying Redis for pattern deletes when available
+                global $wp_object_cache;
+                if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
+                    try {
+                        $redis = $wp_object_cache->redis_instance();
+                        if ($redis && method_exists($redis, 'keys')) {
+                            $pattern = $this->prefix . '*';
+                            foreach ($redis->keys($pattern) as $k) {
+                                $redis->del($k);
+                            }
+                        }
+                    } catch (Exception $e) {
+                        // ignore
+                    }
+                }
+            } else {
+                // Fallback to direct redis client
+                if ($this->redis) {
+                    $this->redis->del($post_key);
+                    if (method_exists($this->redis, 'keys')) {
+                        $pattern = $this->prefix . '*';
+                        foreach ($this->redis->keys($pattern) as $k) {
+                            $this->redis->del($k);
+                        }
+                    }
                 }
             }
 
@@ -201,8 +264,30 @@ add_action('rest_api_init', function () {
         'callback' => function () {
             $mgr = HeadlessCacheManager::getInstance();
             $ok = false;
-            $info = ['redis' => null];
+            $info = [
+                'wp_cache' => null,
+                'redis' => null,
+            ];
 
+            // Test WP object-cache if available
+            if (function_exists('wp_cache_set') && function_exists('wp_cache_get')) {
+                try {
+                    $test_key = 'headless-cache-health-test';
+                    wp_cache_set($test_key, 'ok', 'headless-cache', 5);
+                    $found = null;
+                    $val = wp_cache_get($test_key, 'headless-cache', false, $found);
+                    $info['wp_cache'] = $found ? 'ok' : 'miss';
+                    if ($found) {
+                        $ok = true;
+                    }
+                } catch (Exception $e) {
+                    $info['wp_cache'] = 'error';
+                }
+            } else {
+                $info['wp_cache'] = 'not-available';
+            }
+
+            // Also report on direct Redis connection if present
             try {
                 $reflect = new ReflectionClass($mgr);
                 $prop = $reflect->getProperty('redis');
@@ -211,7 +296,7 @@ add_action('rest_api_init', function () {
                 if ($redis && method_exists($redis, 'ping')) {
                     $pong = $redis->ping();
                     $info['redis'] = ($pong === '+PONG' || $pong === true) ? 'ok' : $pong;
-                    $ok = true;
+                    $ok = $ok || true;
                 } else {
                     $info['redis'] = 'not-connected';
                 }

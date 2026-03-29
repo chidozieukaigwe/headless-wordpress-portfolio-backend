@@ -3,6 +3,7 @@
 This document explains a simple Redis-backed object cache and request-response caching approach for a Headless WordPress CMS with a Next.js frontend. It is written for developers new to caching.
 
 **What these files do**
+
 - `HeadlessCacheManager` (provided in `functions.php` in the attachment):
   - Connects to Redis and provides helpers to cache REST API responses, retrieve cached responses, and invalidate cache when content changes.
   - Key methods:
@@ -36,7 +37,7 @@ flowchart LR
   F -- miss --> H[WP generates response]
   H --> I[Send response; store serialized result in Redis]
   I --> G
-  
+
   subgraph Admin/Content changes
     X[Editor saves post] --> J[WP triggers save_post hooks]
     J --> K[HeadlessCacheManager::invalidate_content_cache]
@@ -46,6 +47,7 @@ flowchart LR
 ```
 
 **Impact of implementing this**
+
 - Positive:
   - Major latency reductions for repeated requests: cached JSON is served without running PHP/DB.
   - Lower origin CPU and DB load, improving scalability.
@@ -58,6 +60,7 @@ flowchart LR
   - Serialization format and size: large responses use memory; consider storing compact payloads or only key fragments.
 
 **Failure modes and mitigations**
+
 - Redis outage: gracefully fall back to dynamic responses (avoid hard failure). The `HeadlessCacheManager` should catch Redis exceptions and let WP serve responses normally.
 - Stale content: make sure `invalidate_content_cache()` is called for all content-changing hooks; use webhooks to prompt frontend revalidation for important pages.
 - Cache key collisions: include route + canonicalized query params + locale + preview flag in keys.
@@ -71,31 +74,27 @@ flowchart LR
    - Use a well-tested WordPress object-cache drop-in (e.g., `tillkruss/redis-cache` or `rmccue/redis-cache`) or provide a minimal `object-cache.php` that uses `WP_REDIS_*` constants (see attached `wp-config` snippet).
 
 3. Add `HeadlessCacheManager` into a mu-plugin or an autoloaded library (so caching is available early):
-
    - Place the class in `wp-content/mu-plugins/headless-cache/headless-cache.php` or a PSR-4 autoloaded class in a plugin.
    - Ensure the class uses a resilient Redis connection (catch exceptions) and exposes the `get_cached_response()` and `cache_api_response()` methods.
 
 4. Hook into REST flow to serve cached responses and populate cache on miss:
-
    - On request start, check for a cached response and short-circuit if present. Example hook points: an early REST server filter or `rest_pre_dispatch`/`rest_post_dispatch` depending on your implementation.
    - After the response is generated, call `cache_api_response()` for GET requests.
 
 5. Invalidate cache on content change:
-
    - Hook `save_post`, `delete_post`, and taxonomy hooks to call `invalidate_content_cache($post_id)`.
    - Invalidate listing pages, post-specific keys, homepage and sitemap keys as appropriate.
 
 6. Integrate with Next.js revalidation:
-
    - When invalidating, fire a webhook to the Next.js app (as in `trigger_frontend_cache_purge`) that calls Next.js revalidation endpoints or your CDN purge API.
    - Secure the webhook with a shared secret header (as shown in the `HeadlessCacheManager` attachment).
 
 7. Monitoring, metrics and safety:
-
    - Track cache hit/miss rate and average TTLs in logs or a metrics system.
    - Fail open: if Redis is unreachable, return dynamic responses instead of failing the request.
 
 **Example integration checklist (concrete steps)**
+
 1. Add Redis to Docker Compose for local development:
 
 ```yaml
@@ -137,6 +136,7 @@ add_action('save_post', function($post_id) {
 5. Measure and iterate: collect metrics, tune `calculate_ttl()` values, and add finer-grained invalidation if necessary.
 
 **Notes & tips**
+
 - Keep cache keys stable and canonical (order query params, exclude volatile tracking params).
 - Consider partial caching: cache structured JSON fragments (e.g., post body) rather than entire payloads if some parts change more often.
 - Use Redis namespaces/prefixes by environment to avoid cross-environment collisions.
@@ -145,7 +145,30 @@ add_action('save_post', function($post_id) {
 ---
 
 If you'd like, I can:
+
 - add a mu-plugin skeleton implementing `HeadlessCacheManager` wired to REST hooks in this repo, or
 - add a Docker Compose Redis service to the developer environment and example `object-cache.php` drop-in.
 
 Prepared by the repository assistant — tell me which follow-up you'd prefer.
+
+---
+
+## Current repository implementation & notes
+
+- The repository now includes a mu-plugin at `wp-content/mu-plugins/headless-cache/headless-cache.php` which implements `HeadlessCacheManager` and the REST caching/invalidation hooks.
+- The mu-plugin was updated to prefer the WordPress cache API (`wp_cache_get`/`wp_cache_set`) so cached REST responses are stored through whatever object-cache drop-in is active. If the drop-in persists to Redis (and the PHP runtime provides a Redis client), the responses will be persisted in Redis.
+- The mu-plugin still supports a direct Redis client fallback (phpredis or Predis) and exposes a health route `/wp-json/headless-cache/v1/health` that reports both `wp_cache` status and low-level `redis` connectivity.
+- `scripts/install-object-cache.php` was updated to prefer the maintained `rhubarbgroup/redis-cache` vendor drop-in and fall back to legacy `tillkruss/redis-cache` paths for compatibility.
+- The abandoned `tillkruss/redis-cache` package was removed from `composer.json` and `composer update` was run; any `tillkruss` plugin folder managed by Composer was removed during that step.
+
+FAQ — do I need to install the Redis object-cache plugin via the WordPress UI?
+
+- No — you do not need to install an additional plugin through the WordPress admin UI when using the Composer-managed approach and the `object-cache.php` drop-in. The `object-cache.php` drop-in lives directly in `wp-content/object-cache.php` (installed by `scripts/install-object-cache.php` from the vendor package). When the drop-in is present, WordPress will automatically use `wp_cache_*` functions through that backend.
+
+- If you prefer managing plugins from the admin UI, you can still install the upstream Redis cache plugin there — but it is unnecessary when the drop-in is already deployed at `wp-content/object-cache.php` and configured via `WP_REDIS_*` constants in `wp-config.php`.
+
+Local development note
+
+- On Local by Flywheel the PHP runtime provided by Local may lack build files or the `phpredis` extension, so the drop-in may operate in a graceful fallback mode and the mu-plugin's health endpoint will show `redis: not-connected` while `wp_cache: ok`. This is expected and safe: cached responses will still be served via the drop-in's in-process/cache behavior. To get true Redis persistence locally either run Local with a PHP runtime that has `redis` enabled, or run the site in a Docker container with Redis + phpredis available.
+
+If you want, I can add a short README in the repo root explaining how to enable Redis locally (Docker Compose example) or try switching the Local site to a PHP runtime that has `redis` enabled and re-check the health endpoint.
