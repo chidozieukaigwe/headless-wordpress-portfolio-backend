@@ -194,4 +194,38 @@ add_action('deleted_post', function ($post_id) {
     HeadlessCacheManager::getInstance()->invalidate_content_cache($post_id);
 });
 
+// Health endpoint for local checks: /wp-json/headless-cache/v1/health
+add_action('rest_api_init', function () {
+    register_rest_route('headless-cache/v1', '/health', [
+        'methods' => 'GET',
+        'callback' => function () {
+            $mgr = HeadlessCacheManager::getInstance();
+            $ok = false;
+            $info = ['redis' => null];
+
+            try {
+                $reflect = new ReflectionClass($mgr);
+                $prop = $reflect->getProperty('redis');
+                $prop->setAccessible(true);
+                $redis = $prop->getValue($mgr);
+                if ($redis && method_exists($redis, 'ping')) {
+                    $pong = $redis->ping();
+                    $info['redis'] = ($pong === '+PONG' || $pong === true) ? 'ok' : $pong;
+                    $ok = true;
+                } else {
+                    $info['redis'] = 'not-connected';
+                }
+            } catch (Exception $e) {
+                $info['redis'] = 'error';
+            }
+
+            return rest_ensure_response([
+                'ok' => $ok,
+                'info' => $info,
+            ]);
+        },
+        'permission_callback' => '__return_true',
+    ]);
+});
+
 return;
