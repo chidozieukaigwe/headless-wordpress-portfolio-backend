@@ -7,7 +7,17 @@ set -euo pipefail
 # 3) hit WP REST endpoint and health endpoint
 # 4) inspect redis keys
 
-WP_URL=${WP_URL:-http://localhost}
+WP_URL=${WP_URL:-}
+if [ -z "${WP_URL}" ]; then
+  # prefer WP_HOME, then WP_SITEURL from .env if present
+  if [ -n "${WP_HOME-}" ]; then
+    WP_URL="${WP_HOME}"
+  elif [ -n "${WP_SITEURL-}" ]; then
+    WP_URL="${WP_SITEURL}"
+  else
+    WP_URL='http://localhost'
+  fi
+fi
 REDIS_COMPOSE_FILE="docker-compose.redis.yml"
 
 # Load .env if present so local HEADLESS_WEBHOOK_SECRET is available to the script
