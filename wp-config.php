@@ -127,6 +127,35 @@ define('DISALLOW_FILE_EDIT', true);
 
 // CORS headers moved to mu-plugin: wp-content/mu-plugins/cors-headers.php
 
+// -----------------------------
+// Redis / Headless webhook config
+// -----------------------------
+// These values are read from the environment for local/dev convenience.
+define('WP_REDIS_HOST', getenv('WP_REDIS_HOST') ?: '127.0.0.1');
+define('WP_REDIS_PORT', getenv('WP_REDIS_PORT') ?: 6379);
+define('WP_REDIS_TIMEOUT', getenv('WP_REDIS_TIMEOUT') ?: 1);
+define('WP_REDIS_READ_TIMEOUT', getenv('WP_REDIS_READ_TIMEOUT') ?: 1);
+
+define('WP_REDIS_PREFIX', getenv('WP_REDIS_PREFIX') ?: 'headless_');
+// Optional tuning constants
+if (getenv('WP_REDIS_MAXTTL') !== false) {
+	define('WP_REDIS_MAXTTL', (int) getenv('WP_REDIS_MAXTTL'));
+}
+if (getenv('WP_REDIS_PERSISTENT') !== false) {
+	define('WP_REDIS_PERSISTENT', getenv('WP_REDIS_PERSISTENT') === 'true' ? true : false);
+}
+if (getenv('WP_REDIS_COMPRESSION') !== false) {
+	define('WP_REDIS_COMPRESSION', getenv('WP_REDIS_COMPRESSION') === 'true' ? true : false);
+}
+
+// Headless frontend webhook used by the cache invalidation helper
+if (getenv('HEADLESS_FRONTEND_URL') !== false) {
+	define('HEADLESS_FRONTEND_URL', getenv('HEADLESS_FRONTEND_URL'));
+}
+if (getenv('HEADLESS_WEBHOOK_SECRET') !== false) {
+	define('HEADLESS_WEBHOOK_SECRET', getenv('HEADLESS_WEBHOOK_SECRET'));
+}
+
 // =============================================
 // 🗺️ URL Configuration
 // =============================================
