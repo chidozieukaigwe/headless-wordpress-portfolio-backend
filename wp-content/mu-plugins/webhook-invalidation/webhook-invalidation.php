@@ -19,8 +19,24 @@ function headless_trigger_post_invalidation($post_id, $post = null, $update = nu
     }
 
     $post_type = get_post_type($post_id);
+    // Prefer site options, fall back to defined constants, then environment variables.
     $webhook_url = get_option('headless_webhook_url');
+    if (! $webhook_url) {
+        if (defined('HEADLESS_WEBHOOK_URL')) {
+            $webhook_url = HEADLESS_WEBHOOK_URL;
+        } else {
+            $webhook_url = getenv('HEADLESS_WEBHOOK_URL') ?: null;
+        }
+    }
+
     $webhook_secret = get_option('headless_webhook_secret');
+    if (! $webhook_secret) {
+        if (defined('HEADLESS_WEBHOOK_SECRET')) {
+            $webhook_secret = HEADLESS_WEBHOOK_SECRET;
+        } else {
+            $webhook_secret = getenv('HEADLESS_WEBHOOK_SECRET') ?: null;
+        }
+    }
 
     $payload = [
         'post_id'   => (int) $post_id,
