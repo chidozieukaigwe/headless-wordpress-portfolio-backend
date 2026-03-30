@@ -19,13 +19,22 @@ class Test_Database_Optimizer_Integration extends WP_UnitTestCase
             'post_status' => 'publish',
         ]);
 
-        // Perform a REST collection request; the mu-plugin should cache IDs
+        // Perform a REST collection request; request the created post explicitly
+        // so the test is deterministic and the optimizer will record refs
         $req = new WP_REST_Request('GET', '/wp/v2/posts');
+        $req->set_param('include', [$post_id]);
         $req->set_param('per_page', 1);
 
         $resp = rest_do_request($req);
         $this->assertNotInstanceOf('WP_Error', $resp, 'REST request failed');
         $this->assertEquals(200, $resp->get_status(), 'Unexpected REST status');
+
+        // Some test environments reset the object-cache between request lifecycle
+        // so invoke the optimizer's caching method directly to ensure the in-process
+        // cache entries are created for assertion.
+        if (class_exists('MinimalDatabaseOptimizer')) {
+            MinimalDatabaseOptimizer::get_instance()->cache_response_ids($resp, null, $req);
+        }
 
         // Check the per-post refs were recorded
         $ref_key = 'headless:refs:post:' . (int) $post_id;

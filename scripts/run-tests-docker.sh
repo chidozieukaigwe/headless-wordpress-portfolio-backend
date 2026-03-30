@@ -15,8 +15,8 @@ export WP_TEST_DB_NAME="$DB_NAME"
 export WP_TEST_DB_USER="$DB_USER"
 export WP_TEST_DB_PASSWORD="$DB_PASSWORD"
 
-echo "Starting test DB container and PHP runner..."
-docker-compose -f "$COMPOSE_FILE" up -d --build db php
+echo "Starting test DB, Redis and PHP runner..."
+docker-compose -f "$COMPOSE_FILE" up -d --build db redis php
 
 echo "Waiting for MySQL to become available inside container..."
 RETRIES=60

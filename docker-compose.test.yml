@@ -17,6 +17,19 @@ services:
     volumes:
       - db_data_test:/var/lib/mysql
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - redis_data_test:/data
+
   php:
     build:
       context: .
@@ -24,11 +37,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./:/var/www/html:cached
     working_dir: /var/www/html
     tty: true
+    environment:
+      - WP_REDIS_HOST=redis
+      - WP_REDIS_PORT=6379
     # Environment variables are provided at runtime from the test runner
 
 volumes:
   db_data_test:
+  redis_data_test:
