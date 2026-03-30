@@ -105,6 +105,74 @@ class Headless_Migrations_Command
 
         WP_CLI::success(sprintf('Migration complete — total refs migrated: %d', $migrated));
     }
+
+    /**
+     * List per-post refs for debugging.
+     *
+     * ## USAGE
+     *
+     * wp headless list-refs <post_id>
+     *
+     * ## OPTIONS
+     *
+     * <post_id>
+     * : The post ID to inspect.
+     */
+    public function list_refs($args, $assoc_args)
+    {
+        $post_id = isset($args[0]) ? (int) $args[0] : 0;
+        if (! $post_id) {
+            WP_CLI::error('Usage: wp headless list-refs <post_id>');
+            return;
+        }
+
+        global $wp_object_cache;
+        $redis = null;
+        if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
+            $redis = $wp_object_cache->redis_instance();
+        }
+
+        $set_key = 'headless:refs:set:post:' . $post_id;
+        $ref_key = 'headless:refs:post:' . $post_id;
+
+        WP_CLI::log("Inspecting refs for post {$post_id}");
+
+        if ($redis) {
+            WP_CLI::log("Redis-backed refs (set: {$set_key}):");
+            try {
+                if (method_exists($redis, 'sMembers')) {
+                    $members = $redis->sMembers($set_key) ?: [];
+                } elseif (method_exists($redis, 'smembers')) {
+                    $members = $redis->smembers($set_key) ?: [];
+                } else {
+                    $members = $redis->smembers($set_key) ?: [];
+                }
+            } catch (Exception $e) {
+                WP_CLI::warning('Failed to read Redis set: ' . $e->getMessage());
+                $members = [];
+            }
+
+            if (empty($members)) {
+                WP_CLI::log('  (none)');
+            } else {
+                foreach ($members as $m) {
+                    WP_CLI::log('  ' . $m);
+                }
+            }
+        } else {
+            WP_CLI::log('No Redis client exposed by object-cache drop-in.');
+        }
+
+        WP_CLI::log("Array-based refs (cache key: {$ref_key}):");
+        $refs = function_exists('wp_cache_get') ? wp_cache_get($ref_key, 'headless-refs') : [];
+        if (empty($refs)) {
+            WP_CLI::log('  (none)');
+        } else {
+            foreach ($refs as $r) {
+                WP_CLI::log('  ' . $r);
+            }
+        }
+    }
 }
 
 WP_CLI::add_command('headless', 'Headless_Migrations_Command');
