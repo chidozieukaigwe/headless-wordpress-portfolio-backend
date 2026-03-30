@@ -28,6 +28,27 @@ class MinimalDatabaseOptimizer
 
     private function __construct() {}
 
+    /**
+     * Return the underlying Redis client from the active object-cache drop-in,
+     * or null if not available.
+     *
+     * We call this only for atomic set operations; all cache reads/writes
+     * for the ID lists themselves continue to use `wp_cache_*`.
+     */
+    public function get_redis_instance()
+    {
+        try {
+            global $wp_object_cache;
+            if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
+                $redis = $wp_object_cache->redis_instance();
+                return $redis ?: null;
+            }
+        } catch (Exception $e) {
+            // ignore and return null
+        }
+        return null;
+    }
+
     private function get_cache_key($request)
     {
         $route = (string) $request->get_route();
@@ -103,18 +124,37 @@ class MinimalDatabaseOptimizer
                 // Best-effort cache; short TTL to avoid staleness without complex invalidation
                 wp_cache_set($key, $ids, $this->cache_group, $this->ttl);
 
-                // Also record per-post references so we can invalidate only affected caches
+                // Record per-post references as Redis SETs (atomic add, read, delete)
+                // Use the active object-cache drop-in's Redis instance when available.
                 try {
+                    $redis = $this->get_redis_instance();
                     foreach ($ids as $post_id) {
-                        $ref_key = 'headless:refs:post:' . (int) $post_id;
-                        $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-                        $refs[] = $key;
-                        // keep unique and bounded list (last 50)
-                        $refs = array_values(array_slice(array_unique($refs), -50));
-                        wp_cache_set($ref_key, $refs, 'headless-refs', DAY_IN_SECONDS);
+                        $set_key = 'headless:refs:set:post:' . (int) $post_id;
+                        if ($redis) {
+                            // Try common method names for Redis clients (phpredis/Predis)
+                            if (method_exists($redis, 'sAdd')) {
+                                $redis->sAdd($set_key, $key);
+                            } elseif (method_exists($redis, 'sadd')) {
+                                $redis->sadd($set_key, $key);
+                            } else {
+                                // Fallback to __call style (Predis sometimes)
+                                try {
+                                    $redis->sadd($set_key, $key);
+                                } catch (Exception $e) {
+                                    // ignore client-specific failures
+                                }
+                            }
+                        } else {
+                            // If Redis isn't available, fallback to existing array-based refs
+                            $ref_key = 'headless:refs:post:' . (int) $post_id;
+                            $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
+                            $refs[] = $key;
+                            $refs = array_values(array_slice(array_unique($refs), -50));
+                            wp_cache_set($ref_key, $refs, 'headless-refs', DAY_IN_SECONDS);
+                        }
                     }
                 } catch (Exception $e) {
-                    // ignore ref tracking errors
+                    // ignore ref tracking errors to avoid impacting request
                 }
             }
         } catch (Exception $e) {
@@ -140,15 +180,53 @@ add_filter('rest_post_dispatch', function ($result, $server, $request) {
  */
 add_action('save_post', function ($post_id) {
     try {
-        $ref_key = 'headless:refs:post:' . (int) $post_id;
-        if (function_exists('wp_cache_get')) {
-            $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-            if (! empty($refs)) {
-                foreach ($refs as $k) {
+        $set_key = 'headless:refs:set:post:' . (int) $post_id;
+        $optimizer = MinimalDatabaseOptimizer::get_instance();
+        $redis = $optimizer->get_redis_instance();
+
+        if ($redis) {
+            // Read members atomically and then delete the set
+            try {
+                if (method_exists($redis, 'sMembers')) {
+                    $members = $redis->sMembers($set_key) ?: [];
+                } elseif (method_exists($redis, 'smembers')) {
+                    $members = $redis->smembers($set_key) ?: [];
+                } else {
+                    // try generic call
+                    $members = $redis->smembers($set_key) ?: [];
+                }
+            } catch (Exception $e) {
+                $members = [];
+            }
+
+            if (! empty($members)) {
+                foreach ($members as $k) {
                     wp_cache_delete($k, 'headless-ids');
                 }
             }
-            wp_cache_delete($ref_key, 'headless-refs');
+
+            // Remove the Redis set
+            try {
+                if (method_exists($redis, 'del')) {
+                    $redis->del($set_key);
+                } elseif (method_exists($redis, 'delete')) {
+                    $redis->delete($set_key);
+                }
+            } catch (Exception $e) {
+                // ignore
+            }
+        } else {
+            // Fallback to previous array-based refs stored via wp_cache
+            $ref_key = 'headless:refs:post:' . (int) $post_id;
+            if (function_exists('wp_cache_get')) {
+                $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
+                if (! empty($refs)) {
+                    foreach ($refs as $k) {
+                        wp_cache_delete($k, 'headless-ids');
+                    }
+                }
+                wp_cache_delete($ref_key, 'headless-refs');
+            }
         }
     } catch (Exception $e) {
         // ignore invalidation errors
@@ -157,15 +235,49 @@ add_action('save_post', function ($post_id) {
 
 add_action('deleted_post', function ($post_id) {
     try {
-        $ref_key = 'headless:refs:post:' . (int) $post_id;
-        if (function_exists('wp_cache_get')) {
-            $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-            if (! empty($refs)) {
-                foreach ($refs as $k) {
+        $set_key = 'headless:refs:set:post:' . (int) $post_id;
+        $optimizer = MinimalDatabaseOptimizer::get_instance();
+        $redis = $optimizer->get_redis_instance();
+
+        if ($redis) {
+            try {
+                if (method_exists($redis, 'sMembers')) {
+                    $members = $redis->sMembers($set_key) ?: [];
+                } elseif (method_exists($redis, 'smembers')) {
+                    $members = $redis->smembers($set_key) ?: [];
+                } else {
+                    $members = $redis->smembers($set_key) ?: [];
+                }
+            } catch (Exception $e) {
+                $members = [];
+            }
+
+            if (! empty($members)) {
+                foreach ($members as $k) {
                     wp_cache_delete($k, 'headless-ids');
                 }
             }
-            wp_cache_delete($ref_key, 'headless-refs');
+
+            try {
+                if (method_exists($redis, 'del')) {
+                    $redis->del($set_key);
+                } elseif (method_exists($redis, 'delete')) {
+                    $redis->delete($set_key);
+                }
+            } catch (Exception $e) {
+                // ignore
+            }
+        } else {
+            $ref_key = 'headless:refs:post:' . (int) $post_id;
+            if (function_exists('wp_cache_get')) {
+                $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
+                if (! empty($refs)) {
+                    foreach ($refs as $k) {
+                        wp_cache_delete($k, 'headless-ids');
+                    }
+                }
+                wp_cache_delete($ref_key, 'headless-refs');
+            }
         }
     } catch (Exception $e) {
         // ignore invalidation errors

@@ -222,6 +222,33 @@ When to add DB indexes
 Next steps and improvements
 
 - Replace per-post ref arrays with Redis sets (`SADD`/`SMEMBERS`/`SREM`) for atomic operations and better scaling when the drop-in exposes a Redis client instance. This repo already prefers the WordPress object-cache API; switch to direct Redis set ops only after confirming the drop-in's API exposes Redis.
+
+**Per-post ref tracking changed to Redis SETs (atomic)**
+
+What changed?: The per-post reference tracking that previously stored arrays (via `wp_cache_set` in the `headless-refs` group) has been migrated to Redis SETs when the active object-cache drop-in exposes a Redis client. The new set keys use the namespace `headless:refs:set:post:{POST_ID}` and contain the logical cache keys for ID-list responses.
+
+Why?: Storing referenced cache keys as Redis SETs provides atomic operations (`SADD`, `SMEMBERS`, `SREM`/`DEL`) which remove race conditions and require no read-modify-write loops. Arrays stored via `wp_cache_get`/`wp_cache_set` are susceptible to concurrency races (two requests updating the same list at the same time), and can lead to lost entries or inconsistent invalidation behavior under load.
+
+How it works?:
+
+- When a REST collection response is cached (ID list stored via `wp_cache_set` into the `headless-ids` group), the optimizer attempts to obtain the underlying Redis client from the object-cache drop-in. If available, it calls `SADD headless:refs:set:post:{POST_ID} {CACHE_KEY}` for each post ID included in the response.
+- On `save_post` / `deleted_post`, the invalidation logic checks for the Redis set `headless:refs:set:post:{POST_ID}` and retrieves its members via `SMEMBERS`. It deletes each referenced cache key with `wp_cache_delete(..., 'headless-ids')` and removes the set via `DEL` (or the client's equivalent method).
+- If the drop-in does not expose a Redis client (local dev or missing extension), the plugin falls back to the previous array-based `wp_cache_get` / `wp_cache_set` approach so behavior remains compatible.
+
+What happens?:
+
+- Under normal operation with a Redis-backed drop-in, per-post refs are stored and read from Redis sets. This provides atomic writes and reliable invalidation even when multiple requests race to record refs.
+- If Redis is not available, the fallback ensures nothing breaks: array-based refs via `wp_cache_*` are used, preserving the previous behavior.
+
+Impact:
+
+- Atomicity: removes race conditions on ref tracking (no lost members when concurrent requests add refs).
+- Scalability: Redis SETs scale well and support fast membership operations; they avoid large serialized arrays being fetched/rewritten.
+- Safety: The change is opt-in at runtime — it only uses direct Redis if the object-cache drop-in exposes a client, otherwise no behaviour change.
+- Migration: Existing array-based refs are not auto-migrated into sets. Over time new refs will be recorded as sets; the invalidation logic handles both forms (it falls back to array refs when Redis isn't present), so there is no downtime risk.
+
+If you'd like, I can add a small WP-CLI command to list or migrate existing array-based refs into Redis sets when you're ready to move entirely to the Redis-backed mode.
+
 - Add taxonomy/term invalidation refs if you cache term-based collections. The pattern mirrors per-post refs: `headless:refs:term:{term_id}`.
 - Add a WP-CLI migration that creates recommended DB indexes as an explicit maintenance task (do not run automatically).
 
