@@ -172,3 +172,64 @@ Local development note
 - On Local by Flywheel the PHP runtime provided by Local may lack build files or the `phpredis` extension, so the drop-in may operate in a graceful fallback mode and the mu-plugin's health endpoint will show `redis: not-connected` while `wp_cache: ok`. This is expected and safe: cached responses will still be served via the drop-in's in-process/cache behavior. To get true Redis persistence locally either run Local with a PHP runtime that has `redis` enabled, or run the site in a Docker container with Redis + phpredis available.
 
 If you want, I can add a short README in the repo root explaining how to enable Redis locally (Docker Compose example) or try switching the Local site to a PHP runtime that has `redis` enabled and re-check the health endpoint.
+
+## Database-level optimizer (MinimalDatabaseOptimizer)
+
+Summary
+
+- `MinimalDatabaseOptimizer` is a small, safe mu-plugin added to this repo to reduce the cost of serving REST responses on cache misses. It does not replace the response cache — it sits under it and reduces DB/Query work when the response cache is missed.
+- Location: `wp-content/mu-plugins/database-optimizer/database-optimizer.php` (loaded via `wp-content/mu-plugins/02-database-optimizer-loader.php`).
+
+What it does (high level)
+
+- Caches short-lived lists of post IDs for REST collection responses (default TTL: 120s). These ID lists are stored via `wp_cache_set` so they are persisted by whichever object-cache drop-in is active (Redis when available).
+- On subsequent matching collection requests, the plugin short-circuits `WP_Query` by setting `post__in` to the cached IDs and `orderby` to `post__in`, avoiding expensive meta queries and large result set processing.
+- Records per-post references for each cached list under keys named `headless:refs:post:{ID}` so invalidation can target only affected caches instead of flushing everything.
+
+Why add it
+
+- The headless response cache (Redis) covers most traffic. When a response miss happens (first request or after invalidation), rebuilding the response may be expensive. `MinimalDatabaseOptimizer` reduces the cost of those cache-miss rebuilds by reusing recent query results.
+
+Design choices (safety-first)
+
+- No schema changes: the implementation does not run `ALTER TABLE` or add indexes automatically. Index creation is separately recommended as a manual/CLI migration step.
+- Short TTLs: default 120 seconds for ID lists to limit staleness and keep logic simple. Per-post ref lists are kept longer (1 day) for reliable invalidation without immediate expiry.
+- Fail-open: all cache or ref-tracking errors are caught; the plugin never blocks or fails requests.
+
+Integration details
+
+- It hooks into REST flow using `rest_post_dispatch` to record IDs and `rest_post_query` to short-circuit queries on cache hits. The hooks are wired in the mu-plugin loader so they run early.
+- It uses `wp_cache_get` / `wp_cache_set` (object-cache API). With an object-cache drop-in that persists to Redis, these cached ID lists and ref keys are backed by Redis.
+- Targeted invalidation: on `save_post` and `deleted_post`, the plugin looks up `headless:refs:post:{ID}`, deletes each referenced cache key from the `headless-ids` group, and deletes the ref key. This avoids wide `wp_cache_flush()` calls.
+
+Quick install / enable
+
+1. Ensure object-cache drop-in is present (`wp-content/object-cache.php`) and `WP_REDIS_*` values in `wp-config.php` are set for your environment.
+2. The mu-plugin is already in the repo under `wp-content/mu-plugins/database-optimizer/`; it loads automatically when WP boots (mu-plugins are always loaded).
+3. Optionally tune the TTL values in the plugin (`$ttl` for IDs, ref TTL when stored) if you need longer cache lifetime.
+
+Testing
+
+- Unit tests can validate cache key generation and the small utility functions. Integration tests run in the project's PHPUnit harness and verify:
+  - a REST collection request records per-post refs,
+  - saving a post triggers targeted invalidation and removes the referenced cache keys.
+- The repo includes `tests/Integration/test-database-optimizer.php` and a dockerized test runner (`scripts/run-tests-docker.sh`) that starts MySQL and Redis to exercise the full object-cache flow.
+
+When to add DB indexes
+
+- Indexes (e.g., on `postmeta(meta_key, meta_value(100))` or `posts(post_type, post_status)`) yield the largest performance gains for heavy meta queries, but they must be applied as a controlled migration (online schema change if available) and not from plugin activation. Document and run index changes during maintenance windows.
+
+Next steps and improvements
+
+- Replace per-post ref arrays with Redis sets (`SADD`/`SMEMBERS`/`SREM`) for atomic operations and better scaling when the drop-in exposes a Redis client instance. This repo already prefers the WordPress object-cache API; switch to direct Redis set ops only after confirming the drop-in's API exposes Redis.
+- Add taxonomy/term invalidation refs if you cache term-based collections. The pattern mirrors per-post refs: `headless:refs:term:{term_id}`.
+- Add a WP-CLI migration that creates recommended DB indexes as an explicit maintenance task (do not run automatically).
+
+Files added in this repo
+
+- `wp-content/mu-plugins/database-optimizer/database-optimizer.php` — MinimalDatabaseOptimizer implementation. Key features: ID-list caching (120s), per-post ref tracking, targeted invalidation hooks.
+- `wp-content/mu-plugins/02-database-optimizer-loader.php` — loader to require the implementation.
+- `tests/Integration/test-database-optimizer.php` — integration test that asserts refs are recorded and invalidated on `save_post`.
+- `scripts/test-database-optimizer.php` and `scripts/run-test-in-docker.sh` — manual test helpers and a Docker runner for quick verification.
+
+If you want, I can add a short WP-CLI helper to list stored refs for a post (debug tool), or convert per-post refs to Redis sets for atomicity. Which would you prefer?
