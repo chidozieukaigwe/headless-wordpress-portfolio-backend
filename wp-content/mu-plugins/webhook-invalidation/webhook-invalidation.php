@@ -60,10 +60,20 @@ function headless_trigger_post_invalidation($post_id, $post = null, $update = nu
 
     // Invalidate cached ID-lists that reference this post.
     try {
-        global $wp_object_cache;
+        // Prefer the optimizer's connectivity-checked Redis helper when available
         $redis = null;
-        if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
-            $redis = $wp_object_cache->redis_instance();
+        if (class_exists('MinimalDatabaseOptimizer') && method_exists('MinimalDatabaseOptimizer', 'get_instance')) {
+            $optimizer = MinimalDatabaseOptimizer::get_instance();
+            if (method_exists($optimizer, 'get_redis_instance')) {
+                $redis = $optimizer->get_redis_instance();
+            }
+        }
+        // Fallback: try to obtain raw redis instance (not connectivity-checked)
+        if (! $redis) {
+            global $wp_object_cache;
+            if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
+                $redis = $wp_object_cache->redis_instance();
+            }
         }
 
         $set_key = 'headless:refs:set:post:' . (int) $post_id;
@@ -95,24 +105,32 @@ function headless_trigger_post_invalidation($post_id, $post = null, $update = nu
                 } elseif (method_exists($redis, 'delete')) {
                     $redis->delete($set_key);
                 }
+                // Extra safe removals for different client implementations
+                if (method_exists($redis, 'unlink')) {
+                    try {
+                        $redis->unlink($set_key);
+                    } catch (Exception $e) {
+                    }
+                }
+                if (method_exists($redis, 'sRem') && ! empty($members)) {
+                    foreach ($members as $m) {
+                        try {
+                            if (method_exists($redis, 'sRem')) {
+                                $redis->sRem($set_key, $m);
+                            } elseif (method_exists($redis, 'srem')) {
+                                $redis->srem($set_key, $m);
+                            }
+                        } catch (Exception $e) {
+                            // ignore per-member failures
+                        }
+                    }
+                }
             } catch (Exception $e) {
                 // noop
             }
-        } else {
-            // Fallback to array-based refs stored via wp_cache
-            $ref_key = 'headless:refs:post:' . (int) $post_id;
-            if (function_exists('wp_cache_get')) {
-                $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-                if (! empty($refs)) {
-                    foreach ($refs as $k) {
-                        wp_cache_delete($k, 'headless-ids');
-                    }
-                }
-                if (function_exists('wp_cache_delete')) {
-                    wp_cache_delete($ref_key, 'headless-refs');
-                }
-            }
         }
+
+        // Legacy array-based refs have been removed; no-op.
     } catch (Exception $e) {
         // never throw from invalidation path
     }

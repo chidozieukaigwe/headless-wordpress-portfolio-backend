@@ -41,7 +41,35 @@ class MinimalDatabaseOptimizer
             global $wp_object_cache;
             if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
                 $redis = $wp_object_cache->redis_instance();
-                return $redis ?: null;
+                if (! $redis) {
+                    return null;
+                }
+
+                // Verify connectivity where possible. Some clients (phpredis/Predis)
+                // expose `ping()`; calling it here ensures we don't return a client
+                // that will immediately throw on first command (causing us to skip
+                // the array fallback).
+                try {
+                    if (method_exists($redis, 'ping')) {
+                        $pong = $redis->ping();
+                        if ($pong === true || $pong === '+PONG' || $pong === 'PONG') {
+                            return $redis;
+                        }
+                        return null;
+                    }
+
+                    // Some Predis clients lazily connect; attempt a connect() if available
+                    if (method_exists($redis, 'connect')) {
+                        $redis->connect();
+                        return $redis;
+                    }
+
+                    // Otherwise assume the instance is usable
+                    return $redis;
+                } catch (Exception $e) {
+                    // Connection failed — treat as unavailable so we fall back
+                    return null;
+                }
             }
         } catch (Exception $e) {
             // ignore and return null
@@ -144,13 +172,6 @@ class MinimalDatabaseOptimizer
                                     // ignore client-specific failures
                                 }
                             }
-                        } else {
-                            // If Redis isn't available, fallback to existing array-based refs
-                            $ref_key = 'headless:refs:post:' . (int) $post_id;
-                            $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-                            $refs[] = $key;
-                            $refs = array_values(array_slice(array_unique($refs), -50));
-                            wp_cache_set($ref_key, $refs, 'headless-refs', DAY_IN_SECONDS);
                         }
                     }
                 } catch (Exception $e) {
@@ -212,20 +233,28 @@ add_action('save_post', function ($post_id) {
                 } elseif (method_exists($redis, 'delete')) {
                     $redis->delete($set_key);
                 }
-            } catch (Exception $e) {
-                // ignore
-            }
-        } else {
-            // Fallback to previous array-based refs stored via wp_cache
-            $ref_key = 'headless:refs:post:' . (int) $post_id;
-            if (function_exists('wp_cache_get')) {
-                $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-                if (! empty($refs)) {
-                    foreach ($refs as $k) {
-                        wp_cache_delete($k, 'headless-ids');
+                // Extra safe removals for different client implementations
+                if (method_exists($redis, 'unlink')) {
+                    try {
+                        $redis->unlink($set_key);
+                    } catch (Exception $e) {
                     }
                 }
-                wp_cache_delete($ref_key, 'headless-refs');
+                if (method_exists($redis, 'sRem') && ! empty($members)) {
+                    foreach ($members as $m) {
+                        try {
+                            if (method_exists($redis, 'sRem')) {
+                                $redis->sRem($set_key, $m);
+                            } elseif (method_exists($redis, 'srem')) {
+                                $redis->srem($set_key, $m);
+                            }
+                        } catch (Exception $e) {
+                            // ignore
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                // ignore
             }
         }
     } catch (Exception $e) {
@@ -266,17 +295,6 @@ add_action('deleted_post', function ($post_id) {
                 }
             } catch (Exception $e) {
                 // ignore
-            }
-        } else {
-            $ref_key = 'headless:refs:post:' . (int) $post_id;
-            if (function_exists('wp_cache_get')) {
-                $refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-                if (! empty($refs)) {
-                    foreach ($refs as $k) {
-                        wp_cache_delete($k, 'headless-ids');
-                    }
-                }
-                wp_cache_delete($ref_key, 'headless-refs');
             }
         }
     } catch (Exception $e) {

@@ -27,6 +27,18 @@ if (! $_tests_dir) {
     $_tests_dir = '/tmp/wordpress-tests-lib';
 }
 
+// Export Redis-related constants from environment variables so the
+// object-cache drop-in (object-cache.php) picks up the correct host/port
+// when running inside Docker test containers. docker-compose.test.yml
+// sets WP_REDIS_HOST=redis; define the constants here so object-cache
+// uses that value instead of its default 127.0.0.1.
+foreach (array('WP_REDIS_HOST', 'WP_REDIS_PORT', 'WP_REDIS_PASSWORD', 'WP_REDIS_DATABASE', 'WP_REDIS_CLIENT') as $env_const) {
+    $val = getenv($env_const);
+    if ($val !== false && ! defined($env_const)) {
+        define($env_const, $val);
+    }
+}
+
 // Include WP test helpers (provides functions like `tests_add_filter`).
 require_once $_tests_dir . '/includes/functions.php';
 

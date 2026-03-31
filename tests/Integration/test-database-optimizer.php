@@ -36,17 +36,44 @@ class Test_Database_Optimizer_Integration extends WP_UnitTestCase
             MinimalDatabaseOptimizer::get_instance()->cache_response_ids($resp, null, $req);
         }
 
-        // Check the per-post refs were recorded
-        $ref_key = 'headless:refs:post:' . (int) $post_id;
-        $refs = wp_cache_get($ref_key, 'headless-refs');
-        $this->assertIsArray($refs, 'Refs should be an array');
-        $this->assertNotEmpty($refs, 'Refs should contain at least one cache key');
+        // Ensure Redis is available for set-based refs; these integration
+        // tests expect the Redis migration to have completed.
+        global $wp_object_cache;
+        $redis = null;
+        if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
+            $redis = $wp_object_cache->redis_instance();
+        }
+
+        if (! $redis) {
+            $this->markTestSkipped('Redis not available; set-based refs required for this test.');
+            return;
+        }
+
+        // Check the Redis set contains the reference key
+        $set_key = 'headless:refs:set:post:' . (int) $post_id;
+        try {
+            if (method_exists($redis, 'sMembers')) {
+                $members = $redis->sMembers($set_key) ?: [];
+            } elseif (method_exists($redis, 'smembers')) {
+                $members = $redis->smembers($set_key) ?: [];
+            } else {
+                $members = $redis->smembers($set_key) ?: [];
+            }
+        } catch (Exception $e) {
+            $members = [];
+        }
+
+        $this->assertNotEmpty($members, 'Redis set should contain at least one cache key');
+        // Record the referenced cache keys so we can verify they are deleted
+        $referenced_keys = $members;
 
         // Update the post to trigger invalidation
         wp_update_post(['ID' => $post_id, 'post_title' => 'DB Optimizer IT Test [updated]']);
 
-        // After save_post, refs should be deleted (or empty)
-        $refs_after = wp_cache_get($ref_key, 'headless-refs');
-        $this->assertTrue(empty($refs_after), 'Refs should be empty after invalidation');
+        // After save_post, the referenced id-list cache keys should be deleted
+        foreach ($referenced_keys as $k) {
+            $val = wp_cache_get($k, 'headless-ids');
+            $this->assertTrue(empty($val), 'Referenced cache key should be deleted after invalidation: ' . $k);
+        }
     }
 }

@@ -33,59 +33,41 @@ class Test_Webhook_Invalidation_Integration extends WP_UnitTestCase
             MinimalDatabaseOptimizer::get_instance()->cache_response_ids($resp, null, $req);
         }
 
-        // Check both Redis-set and array-based refs; one of them should contain entries
+        // Expect Redis set-based refs; legacy array refs have been removed.
         global $wp_object_cache;
         $redis = null;
         if (isset($wp_object_cache) && method_exists($wp_object_cache, 'redis_instance')) {
             $redis = $wp_object_cache->redis_instance();
         }
 
-        $set_key = 'headless:refs:set:post:' . $post_id;
-        $ref_key = 'headless:refs:post:' . $post_id;
-
-        $has_set_members = false;
-        if ($redis) {
-            try {
-                if (method_exists($redis, 'sMembers')) {
-                    $members = $redis->sMembers($set_key) ?: [];
-                } elseif (method_exists($redis, 'smembers')) {
-                    $members = $redis->smembers($set_key) ?: [];
-                } else {
-                    $members = $redis->smembers($set_key) ?: [];
-                }
-                $has_set_members = ! empty($members);
-            } catch (Exception $e) {
-                $has_set_members = false;
-            }
+        if (! $redis) {
+            $this->markTestSkipped('Redis not available; set-based refs required for this test.');
+            return;
         }
 
-        $array_refs = wp_cache_get($ref_key, 'headless-refs') ?: [];
-        $has_array_refs = is_array($array_refs) && ! empty($array_refs);
+        $set_key = 'headless:refs:set:post:' . $post_id;
+        try {
+            if (method_exists($redis, 'sMembers')) {
+                $members = $redis->sMembers($set_key) ?: [];
+            } elseif (method_exists($redis, 'smembers')) {
+                $members = $redis->smembers($set_key) ?: [];
+            } else {
+                $members = $redis->smembers($set_key) ?: [];
+            }
+        } catch (Exception $e) {
+            $members = [];
+        }
 
-        $this->assertTrue($has_set_members || $has_array_refs, 'Expected refs recorded in either Redis set or array refs');
+        $this->assertNotEmpty($members, 'Expected refs recorded in Redis set');
+        $referenced_keys = $members;
 
         // Call invalidation handler
         headless_trigger_post_invalidation($post_id);
 
-        // After invalidation, both forms should be cleared
-        $cleared_array_refs = wp_cache_get($ref_key, 'headless-refs');
-        $this->assertTrue(empty($cleared_array_refs), 'Array refs should be cleared after invalidation');
-
-        if ($redis) {
-            try {
-                // Attempt to read members; should be empty or the key deleted
-                if (method_exists($redis, 'sMembers')) {
-                    $members_after = $redis->sMembers($set_key) ?: [];
-                } elseif (method_exists($redis, 'smembers')) {
-                    $members_after = $redis->smembers($set_key) ?: [];
-                } else {
-                    $members_after = $redis->smembers($set_key) ?: [];
-                }
-            } catch (Exception $e) {
-                $members_after = [];
-            }
-
-            $this->assertTrue(empty($members_after), 'Redis set members should be cleared after invalidation');
+        // After invalidation, the referenced id-list cache keys should be deleted
+        foreach ($referenced_keys as $k) {
+            $val = wp_cache_get($k, 'headless-ids');
+            $this->assertTrue(empty($val), 'Referenced cache key should be deleted after invalidation: ' . $k);
         }
     }
 }

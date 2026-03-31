@@ -112,7 +112,12 @@ define('JWT_AUTH_SECRET_KEY', getenv('JWT_AUTH_SECRET_KEY'));
 define('JWT_AUTH_CORS_ENABLE', getenv('JWT_AUTH_CORS_ENABLE') === 'true' ? true : false);
 
 // Force all admin requests to use SSL
-define('FORCE_SSL_ADMIN', getenv('FORCE_SSL_ADMIN') === 'true' ? true : false);
+if (getenv('WP_ENV') === 'development' || getenv('WP_ENV') === 'local') {
+	define('FORCE_SSL_ADMIN', false);
+} else {
+	define('FORCE_SSL_ADMIN', true);
+}
+// define('FORCE_SSL_ADMIN', getenv('FORCE_SSL_ADMIN') === 'true' ? true : false);
 
 // REST API Configuration
 define('REST_API_PREFIX', getenv('REST_API_PREFIX') ?: 'wp-json');
