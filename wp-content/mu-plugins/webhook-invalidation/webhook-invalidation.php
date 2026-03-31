@@ -46,8 +46,31 @@ function headless_trigger_post_invalidation($post_id, $post = null, $update = nu
         'timestamp' => time(),
     ];
 
+    // Compute frontend paths that should be revalidated by Next.js.
+    $paths = [];
+    if (! empty($payload['post_type']) && ! empty($payload['post_slug'])) {
+        if ($payload['post_type'] === 'post') {
+            $paths[] = '/posts/' . $payload['post_slug'];
+        } else {
+            $paths[] = '/' . $payload['post_type'] . '/' . $payload['post_slug'];
+        }
+    }
+
+    // Always revalidate the primary listing page that may include this post.
+    $paths[] = '/blog';
+
+    // If post has a featured flag, also touch the homepage. Theme/plugins
+    // may provide a meta key or set `$payload['featured']` before calling.
+    if (! empty($payload['featured'])) {
+        $paths[] = '/';
+    }
+
+    // Allow themes/plugins to customize mapping rules.
+    $paths = (array) apply_filters('headless_revalidate_paths', $paths, $post_id, $post, $payload);
+    $payload['paths'] = array_values(array_unique($paths));
+
     if ($webhook_url) {
-        wp_remote_post($webhook_url, [
+        $result = wp_remote_post($webhook_url, [
             'body'    => wp_json_encode($payload),
             'headers' => [
                 'Content-Type'     => 'application/json',
@@ -56,6 +79,17 @@ function headless_trigger_post_invalidation($post_id, $post = null, $update = nu
             'timeout'  => 2,
             'blocking' => false,
         ]);
+
+        /**
+         * Action: headless_webhook_sent
+         *
+         * Fired after attempting to send the headless webhook. Allows tests
+         * and operators to observe payloads and responses.
+         *
+         * @param array $payload The webhook payload sent.
+         * @param mixed $result  The wp_remote_post() result (may be WP_Error).
+         */
+        do_action('headless_webhook_sent', $payload, $result);
     }
 
     // Invalidate cached ID-lists that reference this post.

@@ -61,8 +61,19 @@ class Test_Webhook_Invalidation_Integration extends WP_UnitTestCase
         $this->assertNotEmpty($members, 'Expected refs recorded in Redis set');
         $referenced_keys = $members;
 
+        // Observe the webhook payload via action and call invalidation handler
+        $captured_payload = null;
+        add_action('headless_webhook_sent', function ($payload, $result) use (&$captured_payload) {
+            $captured_payload = $payload;
+        }, 10, 2);
+
         // Call invalidation handler
         headless_trigger_post_invalidation($post_id);
+
+        // Verify that the webhook payload included `paths` for frontend revalidation
+        $this->assertIsArray($captured_payload, 'Webhook payload should be captured');
+        $this->assertArrayHasKey('paths', $captured_payload, 'Webhook payload should include `paths`');
+        $this->assertNotEmpty($captured_payload['paths'], 'paths should contain at least one route');
 
         // After invalidation, the referenced id-list cache keys should be deleted
         foreach ($referenced_keys as $k) {

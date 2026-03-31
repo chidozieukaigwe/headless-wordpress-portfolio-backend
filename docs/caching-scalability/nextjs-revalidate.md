@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "invalid-secret" });
 
   const payload = req.body || {};
-  // Example payload: { post_id, post_type, post_slug, action, timestamp }
+  // Example payload: { post_id, post_type, post_slug, action, timestamp, paths }
 
   // Map content -> frontend paths
   const paths = [];
@@ -57,6 +57,7 @@ Notes:
 ## Mapping rules (recommendation)
 
 - Single-post pages: `/posts/{post_slug}` (map `post_slug` from payload).
+- The webhook payload contains a `paths` array by default (e.g. `/posts/{post_slug}`, `/blog`).
 - Collections: revalidate first-page list(s) (e.g. `/blog`). For paginated lists consider revalidating page 1 only, or compute affected pages if you track pagination position.
 - Taxonomies: when terms change revalidate `/category/{slug}` or `/tag/{slug}` paths.
 - Homepage: revalidate when a site-wide featured post or hero content changes.
@@ -67,6 +68,13 @@ Notes:
 - Use TLS (HTTPS) for the webhook URL.
 - Consider IP allowlisting or HMAC signatures for stronger guarantees.
 - WordPress should call the webhook with `blocking: false` to avoid blocking the editor UI. If you need guaranteed delivery, push the event into a durable queue and have a worker call the revalidation endpoint with retries.
+
+Filter hook: WordPress exposes an `headless_revalidate_paths` filter so themes/plugins
+can customize mapping rules server-side before the webhook is sent. Example:
+
+```php
+$paths = apply_filters('headless_revalidate_paths', $paths, $post_id, $post, $payload);
+```
 
 ## Local testing
 
