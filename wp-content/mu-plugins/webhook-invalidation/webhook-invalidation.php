@@ -12,6 +12,119 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
+// Retry queue configuration
+if (! defined('HEADLESS_WEBHOOK_QUEUE_OPTION')) {
+    define('HEADLESS_WEBHOOK_QUEUE_OPTION', 'headless_webhook_queue');
+}
+if (! defined('HEADLESS_WEBHOOK_MAX_ATTEMPTS')) {
+    define('HEADLESS_WEBHOOK_MAX_ATTEMPTS', 5);
+}
+
+/**
+ * Enqueue a webhook payload for retry processing.
+ *
+ * @param array $payload
+ * @return void
+ */
+function headless_enqueue_webhook(array $payload)
+{
+    $queue = get_option(HEADLESS_WEBHOOK_QUEUE_OPTION, []);
+    $queue[] = [
+        'payload' => $payload,
+        'attempts' => 0,
+        'last_attempt' => null,
+    ];
+    update_option(HEADLESS_WEBHOOK_QUEUE_OPTION, $queue);
+}
+
+/**
+ * Process webhook queue: try sending queued payloads and remove on success.
+ * Runs via WP-Cron hook `headless_retry_webhooks`.
+ */
+function headless_process_webhook_queue()
+{
+    // Lock processing to avoid concurrent runs
+    if (get_transient('headless_webhook_queue_lock')) {
+        return;
+    }
+    set_transient('headless_webhook_queue_lock', time(), 30);
+
+    $queue = get_option(HEADLESS_WEBHOOK_QUEUE_OPTION, []);
+    if (empty($queue) || ! is_array($queue)) {
+        delete_transient('headless_webhook_queue_lock');
+        return;
+    }
+
+    $new_queue = [];
+    $webhook_url = get_option('headless_webhook_url');
+    if (! $webhook_url) {
+        if (defined('HEADLESS_WEBHOOK_URL')) {
+            $webhook_url = HEADLESS_WEBHOOK_URL;
+        } else {
+            $webhook_url = getenv('HEADLESS_WEBHOOK_URL') ?: null;
+        }
+    }
+
+    $webhook_secret = get_option('headless_webhook_secret');
+    if (! $webhook_secret) {
+        if (defined('HEADLESS_WEBHOOK_SECRET')) {
+            $webhook_secret = HEADLESS_WEBHOOK_SECRET;
+        } else {
+            $webhook_secret = getenv('HEADLESS_WEBHOOK_SECRET') ?: null;
+        }
+    }
+
+    foreach ($queue as $item) {
+        $payload = isset($item['payload']) ? (array) $item['payload'] : [];
+        $attempts = isset($item['attempts']) ? (int) $item['attempts'] : 0;
+
+        if ($attempts >= HEADLESS_WEBHOOK_MAX_ATTEMPTS) {
+            error_log('headless: dropping webhook after max attempts: ' . json_encode($payload));
+            continue;
+        }
+
+        if (! $webhook_url) {
+            $new_queue[] = $item; // keep in queue until configured
+            continue;
+        }
+
+        $args = [
+            'body' => wp_json_encode($payload),
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-Webhook-Secret' => $webhook_secret,
+            ],
+            'timeout' => 10,
+            'blocking' => true,
+        ];
+
+        $response = wp_remote_post($webhook_url, $args);
+        $ok = false;
+        if (! is_wp_error($response)) {
+            $code = wp_remote_retrieve_response_code($response);
+            if ($code >= 200 && $code < 300) {
+                $ok = true;
+            }
+        }
+
+        if (! $ok) {
+            $item['attempts'] = $attempts + 1;
+            $item['last_attempt'] = time();
+            $new_queue[] = $item;
+        }
+    }
+
+    update_option(HEADLESS_WEBHOOK_QUEUE_OPTION, $new_queue);
+    delete_transient('headless_webhook_queue_lock');
+}
+
+add_action('headless_retry_webhooks', 'headless_process_webhook_queue');
+
+// Ensure a cron schedule exists (hourly) — lightweight default
+if (! wp_next_scheduled('headless_retry_webhooks')) {
+    wp_schedule_event(time() + 60, 'hourly', 'headless_retry_webhooks');
+}
+
 function headless_trigger_post_invalidation($post_id, $post = null, $update = null)
 {
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
@@ -90,6 +203,22 @@ function headless_trigger_post_invalidation($post_id, $post = null, $update = nu
          * @param mixed $result  The wp_remote_post() result (may be WP_Error).
          */
         do_action('headless_webhook_sent', $payload, $result);
+
+        // If the non-blocking request returns a WP_Error or a non-2xx HTTP
+        // response, enqueue for reliable retry via WP-Cron.
+        $enqueue = false;
+        if (is_wp_error($result)) {
+            $enqueue = true;
+        } else {
+            $code = wp_remote_retrieve_response_code($result);
+            if (! $code || $code < 200 || $code >= 300) {
+                $enqueue = true;
+            }
+        }
+
+        if ($enqueue) {
+            headless_enqueue_webhook($payload);
+        }
     }
 
     // Invalidate cached ID-lists that reference this post.
